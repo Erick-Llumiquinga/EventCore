@@ -1,0 +1,105 @@
+services:
+  # ==========================================
+  # 1. Infrastructure (Data Base and Cache)
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "${DB_PORT}:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_MULTIPLE_DATABASES: ${POSTGRES_MULTIPLE_DATABASES}
+    volumes:
+      # Data persistence on disk (to avoid losing data when shutting down Docker)
+      - postgres_data:/var/lib/postgresql/data
+      # We set up the script to run at startup.
+      - ./docker/postgres/init-dbs.sh:/docker-entrypoint-initdb.d/init-dbs.sh:ro
+    networks:
+      - eventcore-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - eventcore-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # 2. Microservices (Laravel)
+  # ==========================================
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./services/auth-service:/var/www/html
+      - /var/www/html/vendor # Avoid overwriting the container's `vendor` directory
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres # Service name in the Docker network
+      DB_PORT: 5432
+      DB_DATABASE: auth_db
+      DB_USERNAME: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eventcore-net
+
+  # ==========================================
+  # 3.Frontend (React + Vite)
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Avoid conflicts between local and container modules
+    environment:
+      - VITE_AUTH_API_URL=http://localhost:8001/api
+      - VITE_CATALOG_API_URL=http://localhost:8002/api
+      - VITE_BOOKING_API_URL=http://localhost:8003/api
+    networks:
+      - eventcore-net
+
+# ==========================================
+# Network and Shared Volumes
+# ==========================================
+networks:
+  eventcore-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
