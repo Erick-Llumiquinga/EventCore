@@ -78,7 +78,7 @@ Una vez levantados los contenedores, ejecuta estos comandos para inicializar la 
 # 3. Limpiar caché de configuración
 ./eventcore.sh artisan auth config:clear
 
-# 4. Ejecutar migraciones y seeders (crea tablas y roles: admin, organizer, attendee)
+# 4. Ejecutar migraciones y seeders (crea tablas y roles: admin, organizer, client)
 ./eventcore.sh artisan auth migrate:fresh --seed
 ```
 
@@ -94,17 +94,19 @@ Una vez levantados los contenedores, ejecuta estos comandos para inicializar la 
   ```
   *Respuesta:* `{"status": "Gateway OK"}`
 
-* **Registro de Usuario (`POST /api/auth/register`)**:
+* **Registro de Cliente (`POST /api/auth/register`)**:
   ```bash
   curl -X POST http://localhost:8000/api/auth/register \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
     -d '{
-      "name": "Admin User",
-      "email": "admin@eventcore.com",
+      "identification": "1723456789",
+      "first_name": "Carlos",
+      "last_name": "Mendoza",
+      "phone": "0998765432",
+      "email": "carlos@gmail.com",
       "password": "password123",
-      "password_confirmation": "password123",
-      "role": "admin"
+      "password_confirmation": "password123"
     }'
   ```
 
