@@ -72,6 +72,33 @@ services:
     networks:
       - eventcore-net
 
+  catalog-service:
+    build:
+      context: ./services/catalog-service
+      dockerfile: Dockerfile
+    container_name: catalog-service
+    restart: unless-stopped
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./services/catalog-service:/var/www/html
+      - /var/www/html/vendor # Avoid overwriting the container's `vendor` directory
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres # Service name in the Docker network
+      DB_PORT: 5432
+      DB_DATABASE: catalog_db
+      DB_USERNAME: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eventcore-net
+
   # ==========================================
   # 3.Frontend (React + Vite)
   # ==========================================

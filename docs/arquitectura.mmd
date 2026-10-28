@@ -1,0 +1,29 @@
+flowchart TD
+    usuario(("Navegador<br/>usuario"))
+    frontend["Frontend<br/>React + Vite · :5173"]
+    auth["auth-service<br/>Laravel · JWT HS256<br/>:8001"]
+    catalog["catalog-service<br/>Laravel REST<br/>:8002"]
+
+    subgraph pg["PostgreSQL 16 (contenedor único)"]
+        authdb[("auth_db<br/>users · roles")]
+        catalogdb[("catalog_db<br/>cinemas · movies<br/>auditoriums")]
+    end
+
+    redis[("Redis 7<br/>caché + blacklist de JWT")]
+
+    usuario -- "HTTP :5173" --> frontend
+    frontend -- "① POST /api/auth/login o /register<br/>→ devuelve JWT firmado" --> auth
+    frontend -- "② GET/POST catálogo<br/>Authorization: Bearer &lt;JWT&gt;" --> catalog
+    auth -. "JWT_SECRET compartido:<br/>catalog valida el token offline<br/>sin llamar a auth por HTTP" .- catalog
+    auth --> authdb
+    catalog --> catalogdb
+    auth -- "③ logout: blacklist del jti" --> redis
+    catalog -- "jwt.verify: revisa blacklist<br/>+ caché" --> redis
+
+    classDef browser fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef service fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef store fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+
+    class usuario,frontend browser
+    class auth,catalog service
+    class authdb,catalogdb,redis store
