@@ -34,6 +34,8 @@ class Movie extends Model
         'rating',
         'poster_url',
         'status',
+        'created_by',
+        'updated_by',
     ];
 
     /**

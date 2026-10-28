@@ -17,6 +17,10 @@ return new class extends Migration
             $table->string('name');
             $table->unsignedInteger('capacity');
             $table->timestamps();
+
+            // Users live in auth_db (separate database): no cross-database FK possible.
+            $table->unsignedBigInteger('created_by')->nullable()->index();
+            $table->unsignedBigInteger('updated_by')->nullable()->index();
         });
     }
 

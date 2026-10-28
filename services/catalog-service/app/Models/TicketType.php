@@ -11,6 +11,8 @@ class TicketType extends Model
         'showtime_id',
         'name',
         'price',
+        'created_by',
+        'updated_by',
     ];
 
     /**

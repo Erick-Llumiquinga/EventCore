@@ -42,8 +42,8 @@ class ShowtimeApiTest extends TestCase
             ->getJson('/api/showtimes?movie_id='.$movie->id)
             ->assertOk()
             ->assertJsonPath('code', 200)
-            ->assertJsonPath('data.total', 2)
-            ->assertJsonStructure(['code', 'message', 'data' => ['current_page', 'data', 'total', 'per_page']]);
+            ->assertJsonPath('data.pagination.total', 2)
+            ->assertJsonStructure(['code', 'message', 'data' => ['showtimes', 'pagination' => ['total', 'per_page', 'current_page', 'last_page']]]);
     }
 
     public function test_showtimes_filters_by_cinema(): void
@@ -51,12 +51,12 @@ class ShowtimeApiTest extends TestCase
         $this->withToken($this->adminToken())
             ->getJson('/api/showtimes?cinema_id=1')
             ->assertOk()
-            ->assertJsonPath('data.total', 5);
+            ->assertJsonPath('data.pagination.total', 4);
 
         $this->withToken($this->adminToken())
             ->getJson('/api/showtimes?cinema_id=2')
             ->assertOk()
-            ->assertJsonPath('data.total', 3);
+            ->assertJsonPath('data.pagination.total', 2);
     }
 
     public function test_showtimes_filters_by_date(): void
@@ -66,7 +66,7 @@ class ShowtimeApiTest extends TestCase
         $this->withToken($this->adminToken())
             ->getJson('/api/showtimes?date='.$date)
             ->assertOk()
-            ->assertJsonPath('data.total', 3);
+            ->assertJsonPath('data.pagination.total', 3);
     }
 
     public function test_showtime_detail_returns_movie_auditorium_and_ticket_types(): void

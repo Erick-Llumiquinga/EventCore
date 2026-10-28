@@ -53,10 +53,10 @@ class MovieApiTest extends TestCase
             ->getJson('/api/movies')
             ->assertOk()
             ->assertJsonPath('code', 200)
-            ->assertJsonStructure(['code', 'message', 'data' => ['current_page', 'data', 'total', 'per_page']])
-            ->assertJsonPath('data.total', 3)
-            ->assertJsonPath('data.current_page', 1)
-            ->assertJsonPath('data.per_page', 15);
+            ->assertJsonStructure(['code', 'message', 'data' => ['movies', 'pagination' => ['total', 'per_page', 'current_page', 'last_page']]])
+            ->assertJsonPath('data.pagination.total', 3)
+            ->assertJsonPath('data.pagination.current_page', 1)
+            ->assertJsonPath('data.pagination.per_page', 15);
     }
 
     public function test_movies_filters_by_status(): void
@@ -64,12 +64,12 @@ class MovieApiTest extends TestCase
         $this->withToken($this->adminToken())
             ->getJson('/api/movies?status=published')
             ->assertOk()
-            ->assertJsonPath('data.total', 3);
+            ->assertJsonPath('data.pagination.total', 3);
 
         $this->withToken($this->adminToken())
             ->getJson('/api/movies?status=draft')
             ->assertOk()
-            ->assertJsonPath('data.total', 0);
+            ->assertJsonPath('data.pagination.total', 0);
     }
 
     public function test_movies_filters_by_cinema_through_showtimes(): void
@@ -77,7 +77,13 @@ class MovieApiTest extends TestCase
         $this->withToken($this->adminToken())
             ->getJson('/api/movies?cinema_id=1')
             ->assertOk()
-            ->assertJsonPath('data.total', 3);
+            ->assertJsonPath('data.pagination.total', 2);
+
+        $this->withToken($this->adminToken())
+            ->getJson('/api/movies?cinema_id=2')
+            ->assertOk()
+            ->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.movies.0.title', 'Galaxias Perdidas — Estreno');
 
         $this->withToken($this->adminToken())
             ->getJson('/api/movies?cinema_id=999999')
@@ -90,9 +96,9 @@ class MovieApiTest extends TestCase
         $this->withToken($this->adminToken())
             ->getJson('/api/movies?per_page=2')
             ->assertOk()
-            ->assertJsonPath('data.per_page', 2)
-            ->assertJsonPath('data.total', 3)
-            ->assertJsonCount(2, 'data.data');
+            ->assertJsonPath('data.pagination.per_page', 2)
+            ->assertJsonPath('data.pagination.total', 3)
+            ->assertJsonCount(2, 'data.movies');
     }
 
     public function test_movie_detail_returns_showtimes_with_relations(): void

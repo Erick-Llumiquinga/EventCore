@@ -1,11 +1,13 @@
 # 🎟️ EventCore
 
-Plataforma escalable de gestión y reserva de eventos construida bajo una arquitectura de **Microservicios** contenerizados con Docker.
+Plataforma escalable de gestión y reserva de eventos construida bajo una arquitectura de **Microservicios** contenerizados con Docker y orquestados mediante un **API Gateway**.
 
 ---
 
 ## 🏗️ Arquitectura del Sistema
 
+* **API Gateway**: Nginx Reverse Proxy (`http://localhost:8000`)
+  * Puerta de entrada única para todo el tráfico de la API.
 * **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS (`http://localhost:5173`)
 * **Auth Service**: Laravel 13 (PHP 8.4) + JWT Auth (`http://localhost:8001`)
 * **Catalog Service**: Laravel 13 (PHP 8.4) + PostgreSQL `catalog_db` (`http://localhost:8002`)
@@ -77,26 +79,55 @@ Una vez levantados los contenedores, ejecuta estos comandos para inicializar la 
 # 3. Limpiar caché de configuración
 ./eventcore.sh artisan auth config:clear
 
-# 4. Ejecutar migraciones y seeders (crea tablas y roles: admin, organizer, attendee)
+# 4. Ejecutar migraciones y seeders (crea tablas y roles: admin, organizer, client)
 ./eventcore.sh artisan auth migrate:fresh --seed
 ```
 
-### 🧪 Probar que todo funciona:
-* **Frontend**: Abre [http://localhost:5173](http://localhost:5173) en tu navegador.
-* **Auth Service**: Abre [http://localhost:8001](http://localhost:8001) o prueba el endpoint de registro:
+---
 
-```bash
-curl -X POST http://localhost:8001/api/auth/register \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d '{
-    "name": "Admin User",
-    "email": "admin@eventcore.com",
-    "password": "password123",
-    "password_confirmation": "password123",
-    "role": "admin"
-  }'
-```
+## 🧪 Pruebas de Endpoints (A través del API Gateway)
+
+> ⚠️ **Importante**: Todas las llamadas a las APIs deben dirigirse al **puerto 8000 (API Gateway)**. El Gateway se encarga de enrutar internamente a cada microservicio.
+
+* **Health Check del Gateway**:
+  ```bash
+  curl http://localhost:8000/health
+  ```
+  *Respuesta:* `{"status": "Gateway OK"}`
+
+* **Registro de Cliente (`POST /api/auth/register`)**:
+  ```bash
+  curl -X POST http://localhost:8000/api/auth/register \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{
+      "identification": "1723456789",
+      "first_name": "Carlos",
+      "last_name": "Mendoza",
+      "phone": "0998765432",
+      "email": "carlos@gmail.com",
+      "password": "password123",
+      "password_confirmation": "password123"
+    }'
+  ```
+
+* **Login de Usuario (`POST /api/auth/login`)**:
+  ```bash
+  curl -X POST http://localhost:8000/api/auth/login \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d '{
+      "email": "admin@eventcore.com",
+      "password": "password123"
+    }'
+  ```
+
+* **Perfil Protegido (`GET /api/auth/me`)**:
+  ```bash
+  curl -X GET http://localhost:8000/api/auth/me \
+    -H "Accept: application/json" \
+    -H "Authorization: Bearer <TU_ACCESS_TOKEN>"
+  ```
 
 ---
 
@@ -214,7 +245,7 @@ Para evitar tener que escribir comandos largos de `docker compose exec ...`, uti
 
 ## 📦 Guía: Cómo agregar un Nuevo Microservicio
 
-Cuando el equipo esté listo para crear el siguiente microservicio (ej. `catalog-service` o `booking-service`), sigan estos pasos estandarizados:
+Cuando el equipo esté listo para crear el siguiente microservicio (ej. `catalog-service` o `booking-service`), sigan estos pasos:
 
 ### 1. Crear el nuevo proyecto Laravel
 Crea la carpeta dentro de `services/`:
@@ -241,8 +272,6 @@ Agrega el bloque correspondiente en la sección de microservicios:
       dockerfile: Dockerfile
     container_name: catalog-service
     restart: unless-stopped
-    ports:
-      - "8002:8000"
     volumes:
       - ./services/catalog-service:/var/www/html
       - /var/www/html/vendor
@@ -263,8 +292,26 @@ Agrega el bloque correspondiente en la sección de microservicios:
       - eventcore-net
 ```
 
-### 5. Registrar el atajo en `eventcore.sh`
-Abre `eventcore.sh` y añade el mapeo de alias dentro del bloque `case "$SERVICE" in`:
+### 5. Configurar la ruta en el API Gateway
+Abre `docker/gateway/default.conf` y agrega la regla de enrutamiento:
+
+```nginx
+    location /api/events {
+        proxy_pass http://catalog-service:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+```
+
+Luego recarga el gateway:
+```bash
+docker compose restart api-gateway
+```
+
+### 6. Registrar el atajo en `eventcore.sh`
+Abre `eventcore.sh` y añade el mapeo dentro del bloque `case "$SERVICE" in`:
 
 ```bash
   catalog)
@@ -272,7 +319,7 @@ Abre `eventcore.sh` y añade el mapeo de alias dentro del bloque `case "$SERVICE
     ;;
 ```
 
-### 6. Levantar el nuevo servicio
+### 7. Levantar el nuevo servicio
 ```bash
 docker compose up -d --build catalog-service
 ```

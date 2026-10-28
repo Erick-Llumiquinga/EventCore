@@ -19,7 +19,13 @@ class CinemaController extends Controller
      */
     public function store(StoreCinemaRequest $request): JsonResponse
     {
-        $cinema = Cinema::create($request->validated());
+        $userId = $request->attributes->get('auth_user_id');
+
+        $cinema = Cinema::create([
+            ...$request->validated(),
+            'created_by' => $userId,
+            'updated_by' => $userId,
+        ]);
 
         return $this->respondSuccess($cinema, Messages::get('catalog.cinema.store'), 201);
     }
@@ -35,7 +41,10 @@ class CinemaController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        $record->update($request->validated());
+        $record->update([
+            ...$request->validated(),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($record->fresh(), Messages::get('catalog.cinema.update'));
     }

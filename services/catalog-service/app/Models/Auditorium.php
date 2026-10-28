@@ -18,6 +18,8 @@ class Auditorium extends Model
         'cinema_id',
         'name',
         'capacity',
+        'created_by',
+        'updated_by',
     ];
 
     /**

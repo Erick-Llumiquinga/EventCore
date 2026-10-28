@@ -26,7 +26,11 @@ class TicketTypeController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        $ticketType = $showtime->ticketTypes()->create($request->validated());
+        $ticketType = $showtime->ticketTypes()->create([
+            ...$request->validated(),
+            'created_by' => $request->attributes->get('auth_user_id'),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($ticketType, Messages::get('catalog.ticket_type.store'), 201);
     }
@@ -42,7 +46,10 @@ class TicketTypeController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        $record->update($request->validated());
+        $record->update([
+            ...$request->validated(),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($record->fresh(), Messages::get('catalog.ticket_type.update'));
     }

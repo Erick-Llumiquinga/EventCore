@@ -29,6 +29,8 @@ class SeatController extends Controller
         $seat = $auditorium->seats()->create([
             ...$request->validated(),
             'status' => $request->validated()['status'] ?? Seat::STATUS_ACTIVE,
+            'created_by' => $request->attributes->get('auth_user_id'),
+            'updated_by' => $request->attributes->get('auth_user_id'),
         ]);
 
         return $this->respondSuccess($seat, Messages::get('catalog.seat.store'), 201);
@@ -45,7 +47,10 @@ class SeatController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        $record->update($request->validated());
+        $record->update([
+            ...$request->validated(),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($record->fresh(), Messages::get('catalog.seat.update'));
     }

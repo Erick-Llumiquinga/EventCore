@@ -21,6 +21,8 @@ class Seat extends Model
         'row_label',
         'seat_number',
         'status',
+        'created_by',
+        'updated_by',
     ];
 
     /**

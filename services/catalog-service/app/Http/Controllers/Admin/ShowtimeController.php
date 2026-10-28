@@ -19,7 +19,11 @@ class ShowtimeController extends Controller
      */
     public function store(StoreShowtimeRequest $request): JsonResponse
     {
-        $showtime = Showtime::create($request->validated());
+        $showtime = Showtime::create([
+            ...$request->validated(),
+            'created_by' => $request->attributes->get('auth_user_id'),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($showtime, Messages::get('catalog.showtime.store'), 201);
     }
@@ -35,7 +39,10 @@ class ShowtimeController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        $record->update($request->validated());
+        $record->update([
+            ...$request->validated(),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($record->fresh(), Messages::get('catalog.showtime.update'));
     }

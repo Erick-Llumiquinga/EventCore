@@ -31,10 +31,17 @@ class MovieController extends Controller
             $query->where('status', $request->string('status'));
         }
 
-        return $this->respondSuccess(
-            $query->paginate($request->integer('per_page', 15)),
-            Messages::get('catalog.movies.list')
-        );
+        $paginator = $query->paginate($request->integer('per_page', 15));
+
+        return $this->respondSuccess([
+            'movies' => collect($paginator->items()),
+            'pagination' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+            ],
+        ], Messages::get('catalog.movies.list'));
     }
 
     /**

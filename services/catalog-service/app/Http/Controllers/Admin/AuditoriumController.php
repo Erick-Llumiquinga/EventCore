@@ -26,7 +26,11 @@ class AuditoriumController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        $auditorium = $cinema->auditoriums()->create($request->validated());
+        $auditorium = $cinema->auditoriums()->create([
+            ...$request->validated(),
+            'created_by' => $request->attributes->get('auth_user_id'),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($auditorium, Messages::get('catalog.auditorium.store'), 201);
     }
@@ -42,7 +46,10 @@ class AuditoriumController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        $record->update($request->validated());
+        $record->update([
+            ...$request->validated(),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($record->fresh(), Messages::get('catalog.auditorium.update'));
     }

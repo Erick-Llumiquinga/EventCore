@@ -13,6 +13,8 @@ class Showtime extends Model
         'auditorium_id',
         'start_time',
         'format',
+        'created_by',
+        'updated_by',
     ];
 
     /**

@@ -15,6 +15,8 @@ class Cinema extends Model
         'name',
         'address',
         'city',
+        'created_by',
+        'updated_by',
     ];
 
     public function auditoriums(): HasMany

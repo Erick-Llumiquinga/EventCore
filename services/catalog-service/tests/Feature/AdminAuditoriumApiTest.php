@@ -59,9 +59,11 @@ class AdminAuditoriumApiTest extends TestCase
             ->assertJsonPath('code', 200)
             ->assertJsonPath('data.name', 'Sala IMAX')
             ->assertJsonPath('data.capacity', 200)
-            ->assertJsonPath('data.cinema_id', 1);
+            ->assertJsonPath('data.cinema_id', 1)
+            ->assertJsonPath('data.created_by', 1)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('auditoriums', ['cinema_id' => 1, 'name' => 'Sala IMAX']);
+        $this->assertDatabaseHas('auditoriums', ['cinema_id' => 1, 'name' => 'Sala IMAX', 'created_by' => 1, 'updated_by' => 1]);
     }
 
     public function test_admin_can_update_an_auditorium(): void
@@ -72,9 +74,11 @@ class AdminAuditoriumApiTest extends TestCase
             ->putJson('/api/auditoriums/'.$auditorium->id, ['capacity' => 300])
             ->assertOk()
             ->assertJsonPath('code', 200)
-            ->assertJsonPath('data.capacity', 300);
+            ->assertJsonPath('data.capacity', 300)
+            ->assertJsonPath('data.created_by', null)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('auditoriums', ['id' => $auditorium->id, 'capacity' => 300]);
+        $this->assertDatabaseHas('auditoriums', ['id' => $auditorium->id, 'capacity' => 300, 'updated_by' => 1]);
     }
 
     public function test_update_returns_404_for_unknown_auditorium(): void

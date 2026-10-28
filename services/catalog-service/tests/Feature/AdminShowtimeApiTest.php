@@ -54,9 +54,11 @@ class AdminShowtimeApiTest extends TestCase
             ->assertJsonPath('code', 200)
             ->assertJsonPath('data.movie_id', $movie->id)
             ->assertJsonPath('data.auditorium_id', 2)
-            ->assertJsonPath('data.format', '2D');
+            ->assertJsonPath('data.format', '2D')
+            ->assertJsonPath('data.created_by', 1)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('showtimes', ['movie_id' => $movie->id, 'auditorium_id' => 2, 'format' => '2D']);
+        $this->assertDatabaseHas('showtimes', ['movie_id' => $movie->id, 'auditorium_id' => 2, 'format' => '2D', 'created_by' => 1, 'updated_by' => 1]);
     }
 
     public function test_admin_can_update_a_showtime(): void
@@ -65,9 +67,11 @@ class AdminShowtimeApiTest extends TestCase
             ->putJson('/api/showtimes/1', ['format' => 'IMAX-Sub'])
             ->assertOk()
             ->assertJsonPath('code', 200)
-            ->assertJsonPath('data.format', 'IMAX-Sub');
+            ->assertJsonPath('data.format', 'IMAX-Sub')
+            ->assertJsonPath('data.created_by', null)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('showtimes', ['id' => 1, 'format' => 'IMAX-Sub']);
+        $this->assertDatabaseHas('showtimes', ['id' => 1, 'format' => 'IMAX-Sub', 'updated_by' => 1]);
     }
 
     public function test_update_returns_404_for_unknown_showtime(): void
@@ -103,9 +107,11 @@ class AdminShowtimeApiTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('code', 200)
             ->assertJsonPath('data.name', 'Niños')
-            ->assertJsonPath('data.price', '10.00');
+            ->assertJsonPath('data.price', '10.00')
+            ->assertJsonPath('data.created_by', 1)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('ticket_types', ['showtime_id' => 1, 'name' => 'Niños']);
+        $this->assertDatabaseHas('ticket_types', ['showtime_id' => 1, 'name' => 'Niños', 'created_by' => 1, 'updated_by' => 1]);
     }
 
     public function test_ticket_type_store_validates_the_payload(): void
@@ -123,9 +129,11 @@ class AdminShowtimeApiTest extends TestCase
             ->putJson('/api/ticket-types/1', ['price' => 18.50])
             ->assertOk()
             ->assertJsonPath('code', 200)
-            ->assertJsonPath('data.price', '18.50');
+            ->assertJsonPath('data.price', '18.50')
+            ->assertJsonPath('data.created_by', null)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('ticket_types', ['id' => 1, 'price' => 18.50]);
+        $this->assertDatabaseHas('ticket_types', ['id' => 1, 'price' => 18.50, 'updated_by' => 1]);
     }
 
     public function test_admin_can_delete_a_ticket_type(): void
@@ -146,9 +154,11 @@ class AdminShowtimeApiTest extends TestCase
             ->assertJsonPath('code', 200)
             ->assertJsonPath('data.row_label', 'D')
             ->assertJsonPath('data.seat_number', 1)
-            ->assertJsonPath('data.status', 'active');
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.created_by', 1)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('seats', ['auditorium_id' => 1, 'row_label' => 'D', 'seat_number' => 1]);
+        $this->assertDatabaseHas('seats', ['auditorium_id' => 1, 'row_label' => 'D', 'seat_number' => 1, 'created_by' => 1, 'updated_by' => 1]);
     }
 
     public function test_seat_store_validates_the_payload(): void
@@ -168,9 +178,11 @@ class AdminShowtimeApiTest extends TestCase
             ->putJson('/api/seats/'.$seat->id, ['status' => 'maintenance'])
             ->assertOk()
             ->assertJsonPath('code', 200)
-            ->assertJsonPath('data.status', 'maintenance');
+            ->assertJsonPath('data.status', 'maintenance')
+            ->assertJsonPath('data.created_by', null)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('seats', ['id' => $seat->id, 'status' => 'maintenance']);
+        $this->assertDatabaseHas('seats', ['id' => $seat->id, 'status' => 'maintenance', 'updated_by' => 1]);
     }
 
     public function test_admin_can_delete_a_seat(): void

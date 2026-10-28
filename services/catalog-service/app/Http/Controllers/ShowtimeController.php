@@ -40,10 +40,17 @@ class ShowtimeController extends Controller
             ]);
         }
 
-        return $this->respondSuccess(
-            $query->paginate($request->integer('per_page', 15)),
-            Messages::get('catalog.showtimes.list')
-        );
+        $paginator = $query->paginate($request->integer('per_page', 15));
+
+        return $this->respondSuccess([
+            'showtimes' => collect($paginator->items()),
+            'pagination' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+            ],
+        ], Messages::get('catalog.showtimes.list'));
     }
 
     /**

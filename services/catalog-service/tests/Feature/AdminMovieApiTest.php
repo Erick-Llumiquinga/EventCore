@@ -53,9 +53,11 @@ class AdminMovieApiTest extends TestCase
             ->assertJsonPath('data.title', 'Maravillas del Cine')
             ->assertJsonPath('data.duration_minutes', 105)
             ->assertJsonPath('data.rating', '+12')
-            ->assertJsonPath('data.status', 'draft');
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.created_by', 1)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('movies', ['title' => 'Maravillas del Cine', 'status' => 'draft']);
+        $this->assertDatabaseHas('movies', ['title' => 'Maravillas del Cine', 'status' => 'draft', 'created_by' => 1, 'updated_by' => 1]);
     }
 
     public function test_admin_can_update_a_movie(): void
@@ -68,7 +70,9 @@ class AdminMovieApiTest extends TestCase
             ->assertJsonPath('code', 200)
             ->assertJsonPath('data.title', 'Título actualizado')
             ->assertJsonPath('data.duration_minutes', 130)
-            ->assertJsonPath('data.status', 'finished');
+            ->assertJsonPath('data.status', 'finished')
+            ->assertJsonPath('data.created_by', null)
+            ->assertJsonPath('data.updated_by', 1);
     }
 
     public function test_update_returns_404_for_unknown_movie(): void

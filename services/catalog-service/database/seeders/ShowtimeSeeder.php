@@ -19,14 +19,14 @@ class ShowtimeSeeder extends Seeder
 
         $schedule = [
             // [movie index, auditorium index, days from now, time, format]
+            // Quito (auditoriums 1-2): Abyssal + El Misterio.
             [0, 0, 1, '19:30', '2D'],
             [0, 0, 2, '19:30', '4D-Sub'],
-            [0, 2, 1, '21:00', '2D'],
             [1, 1, 1, '16:00', '2D'],
             [1, 1, 3, '16:00', '2D'],
-            [1, 3, 2, '18:00', '4D-Sub'],
-            [2, 0, 2, '21:30', '4D-Sub'],
-            [2, 2, 3, '21:30', '2D'],
+            // Guayaquil (auditoriums 3-4): Galaxias only, so ?cinema_id= shows a distinct set.
+            [2, 2, 1, '21:00', '2D'],
+            [2, 3, 2, '18:00', '4D-Sub'],
         ];
 
         foreach ($schedule as [$movieIndex, $auditoriumIndex, $days, $time, $format]) {

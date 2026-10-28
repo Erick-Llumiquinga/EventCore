@@ -49,9 +49,11 @@ class AdminCinemaApiTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('code', 200)
             ->assertJsonPath('data.name', 'Cine Megaplex')
-            ->assertJsonPath('data.city', 'Cochabamba');
+            ->assertJsonPath('data.city', 'Cochabamba')
+            ->assertJsonPath('data.created_by', 1)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('cinemas', ['name' => 'Cine Megaplex', 'city' => 'Cochabamba']);
+        $this->assertDatabaseHas('cinemas', ['name' => 'Cine Megaplex', 'city' => 'Cochabamba', 'created_by' => 1, 'updated_by' => 1]);
     }
 
     public function test_admin_can_update_a_cinema(): void
@@ -62,9 +64,11 @@ class AdminCinemaApiTest extends TestCase
             ->putJson('/api/cinemas/'.$cinema->id, ['name' => 'Cine Renombrado'])
             ->assertOk()
             ->assertJsonPath('code', 200)
-            ->assertJsonPath('data.name', 'Cine Renombrado');
+            ->assertJsonPath('data.name', 'Cine Renombrado')
+            ->assertJsonPath('data.created_by', null)
+            ->assertJsonPath('data.updated_by', 1);
 
-        $this->assertDatabaseHas('cinemas', ['id' => $cinema->id, 'name' => 'Cine Renombrado']);
+        $this->assertDatabaseHas('cinemas', ['id' => $cinema->id, 'name' => 'Cine Renombrado', 'updated_by' => 1]);
     }
 
     public function test_update_returns_404_for_unknown_cinema(): void

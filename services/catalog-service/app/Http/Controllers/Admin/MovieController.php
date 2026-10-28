@@ -21,10 +21,13 @@ class MovieController extends Controller
     public function store(StoreMovieRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $userId = $request->attributes->get('auth_user_id');
 
         $movie = Movie::create([
             ...$data,
             'status' => $data['status'] ?? Movie::STATUS_DRAFT,
+            'created_by' => $userId,
+            'updated_by' => $userId,
         ]);
 
         return $this->respondSuccess($movie, Messages::get('catalog.movie.store'), 201);
@@ -41,7 +44,10 @@ class MovieController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        $record->update($request->validated());
+        $record->update([
+            ...$request->validated(),
+            'updated_by' => $request->attributes->get('auth_user_id'),
+        ]);
 
         return $this->respondSuccess($record->fresh(), Messages::get('catalog.movie.update'));
     }

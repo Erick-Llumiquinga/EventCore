@@ -30,10 +30,10 @@ class CinemaApiTest extends TestCase
             ->getJson('/api/cinemas')
             ->assertOk()
             ->assertJsonPath('code', 200)
-            ->assertJsonStructure(['code', 'message', 'data' => ['current_page', 'data', 'total', 'per_page']])
-            ->assertJsonPath('data.total', 2)
-            ->assertJsonPath('data.current_page', 1)
-            ->assertJsonPath('data.per_page', 15);
+            ->assertJsonStructure(['code', 'message', 'data' => ['cinemas', 'pagination' => ['total', 'per_page', 'current_page', 'last_page']]])
+            ->assertJsonPath('data.pagination.total', 2)
+            ->assertJsonPath('data.pagination.current_page', 1)
+            ->assertJsonPath('data.pagination.per_page', 15);
     }
 
     public function test_cinemas_filters_by_city(): void
@@ -41,13 +41,13 @@ class CinemaApiTest extends TestCase
         $this->withToken($this->adminToken())
             ->getJson('/api/cinemas?city=quito')
             ->assertOk()
-            ->assertJsonPath('data.total', 1)
-            ->assertJsonPath('data.data.0.name', 'Cine Multicentro Quito');
+            ->assertJsonPath('data.pagination.total', 1)
+            ->assertJsonPath('data.cinemas.0.name', 'Cine Multicentro Quito');
 
         $this->withToken($this->adminToken())
             ->getJson('/api/cinemas?city=Cochabamba')
             ->assertOk()
-            ->assertJsonPath('data.total', 0);
+            ->assertJsonPath('data.pagination.total', 0);
     }
 
     public function test_show_returns_cinema_with_auditoriums(): void

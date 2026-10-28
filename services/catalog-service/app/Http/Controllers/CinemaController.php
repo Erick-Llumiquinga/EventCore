@@ -24,10 +24,17 @@ class CinemaController extends Controller
             $query->whereRaw('LOWER(city) = ?', [mb_strtolower($request->string('city'))]);
         }
 
-        return $this->respondSuccess(
-            $query->paginate($request->integer('per_page', 15)),
-            Messages::get('catalog.cinemas.list')
-        );
+        $paginator = $query->paginate($request->integer('per_page', 15));
+
+        return $this->respondSuccess([
+            'cinemas' => collect($paginator->items()),
+            'pagination' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+            ],
+        ], Messages::get('catalog.cinemas.list'));
     }
 
     /**
