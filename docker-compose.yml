@@ -70,6 +70,31 @@ services:
     networks:
       - eventcore-net
 
+  catalog-service:
+    build:
+      context: ./services/catalog-service
+      dockerfile: Dockerfile
+    container_name: catalog-service
+    restart: unless-stopped
+    volumes:
+      - ./services/catalog-service:/var/www/html
+      - /var/www/html/vendor # Avoid overwriting the container's `vendor` directory
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres # Service name in the Docker network
+      DB_PORT: 5432
+      DB_DATABASE: catalog_db
+      DB_USERNAME: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eventcore-net
+
   # ==========================================
   # 3. Microservices (Laravel)
   # ==========================================
@@ -83,6 +108,7 @@ services:
       - ./docker/gateway/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - auth-service
+      - catalog-service
     networks:
       - eventcore-net
 
@@ -102,7 +128,7 @@ services:
       - /app/node_modules # Avoid conflicts between local and container modules
     environment:
       - VITE_AUTH_API_URL=http://localhost:8001/api
-      - VITE_CATALOG_API_URL=http://localhost:8002/api
+      - VITE_CATALOG_API_URL=http://localhost:8001/api/catalog
       - VITE_BOOKING_API_URL=http://localhost:8003/api
     networks:
       - eventcore-net

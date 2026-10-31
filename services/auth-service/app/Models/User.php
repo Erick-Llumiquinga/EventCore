@@ -17,10 +17,11 @@ class User extends Authenticatable implements JWTSubject
     use HasFactory, Notifiable;
 
     protected $fillable = [
-        'name',
+        'person_id',
+        'role_id',
         'email',
         'password',
-        'role_id',
+        'is_active',
     ];
 
     protected $hidden = [
@@ -38,12 +39,34 @@ class User extends Authenticatable implements JWTSubject
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_active' => 'boolean',
         ];
+    }
+
+    public function person(): BelongsTo
+    {
+        return $this->belongsTo(Person::class);
     }
 
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * Accesor para obtener el nombre completo desde Person.
+     */
+    public function getNameAttribute(): string
+    {
+        return $this->person ? $this->person->full_name : '';
+    }
+
+    /**
+     * Verificar si el usuario tiene uno de los roles especificados.
+     */
+    public function hasRole(string ...$roles): bool
+    {
+        return in_array($this->role?->slug, $roles, true);
     }
 
     public function getJWTIdentifier(): mixed
@@ -54,8 +77,9 @@ class User extends Authenticatable implements JWTSubject
     public function getJWTCustomClaims(): array
     {
         return [
-            'name' => $this->name,
+            'user_id' => $this->id,
             'email' => $this->email,
+            'name' => $this->name,
             'role' => $this->role?->slug,
         ];
     }

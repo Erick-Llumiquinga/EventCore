@@ -9,8 +9,9 @@ Plataforma escalable de gestión y reserva de eventos construida bajo una arquit
 * **API Gateway**: Nginx Reverse Proxy (`http://localhost:8000`)
   * Puerta de entrada única para todo el tráfico de la API.
 * **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS (`http://localhost:5173`)
-* **Auth Service**: Laravel 13 (PHP 8.4) + JWT Auth (Servicio interno en red Docker)
-* **Base de Datos**: PostgreSQL 16 (`localhost:5432` / `auth_db`)
+* **Auth Service**: Laravel 13 (PHP 8.4) + JWT Auth (`http://localhost:8001`)
+* **Catalog Service**: Laravel 13 (PHP 8.4) + PostgreSQL `catalog_db` (`http://localhost:8002`)
+* **Base de Datos**: PostgreSQL 16 (`localhost:5432` / `auth_db`, `catalog_db`)
 * **Caché y Locks**: Redis 7 (`localhost:6379`)
 
 ---
@@ -78,7 +79,7 @@ Una vez levantados los contenedores, ejecuta estos comandos para inicializar la 
 # 3. Limpiar caché de configuración
 ./eventcore.sh artisan auth config:clear
 
-# 4. Ejecutar migraciones y seeders (crea tablas y roles: admin, organizer, attendee)
+# 4. Ejecutar migraciones y seeders (crea tablas y roles: admin, organizer, client)
 ./eventcore.sh artisan auth migrate:fresh --seed
 ```
 
@@ -94,17 +95,19 @@ Una vez levantados los contenedores, ejecuta estos comandos para inicializar la 
   ```
   *Respuesta:* `{"status": "Gateway OK"}`
 
-* **Registro de Usuario (`POST /api/auth/register`)**:
+* **Registro de Cliente (`POST /api/auth/register`)**:
   ```bash
   curl -X POST http://localhost:8000/api/auth/register \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
     -d '{
-      "name": "Admin User",
-      "email": "admin@eventcore.com",
+      "identification": "1723456789",
+      "first_name": "Carlos",
+      "last_name": "Mendoza",
+      "phone": "0998765432",
+      "email": "carlos@gmail.com",
       "password": "password123",
-      "password_confirmation": "password123",
-      "role": "admin"
+      "password_confirmation": "password123"
     }'
   ```
 
@@ -125,6 +128,87 @@ Una vez levantados los contenedores, ejecuta estos comandos para inicializar la 
     -H "Accept: application/json" \
     -H "Authorization: Bearer <TU_ACCESS_TOKEN>"
   ```
+
+---
+
+## ⚙️ Configuración Inicial de `catalog-service`
+
+> **IMPORTANTE**: `catalog-service` verifica los tokens emitidos por `auth-service`, por lo que su `JWT_SECRET` **debe ser idéntico** al de `services/auth-service/.env`. Nunca ejecutes `jwt:secret` en este servicio; copia el valor desde auth-service.
+
+```bash
+# 1. Entorno del servicio (si no existe)
+cp services/catalog-service/.env.example services/catalog-service/.env
+
+# 2. Copiar APP_KEY y JWT_SECRET desde services/auth-service/.env
+#    (el JWT_SECRET debe ser EXACTAMENTE el mismo)
+
+# 3. Generar tablas y datos de prueba (2 cines, 4 películas, 6 auditorios)
+./eventcore.sh artisan catalog key:generate
+./eventcore.sh artisan catalog config:clear
+./eventcore.sh artisan catalog migrate:fresh --seed
+```
+
+### 🧪 Probar `catalog-service`:
+
+```bash
+# 1. Login en auth-service y obtener el token
+TOKEN=$(curl -s -X POST http://localhost:8001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"super_admin@gamil.com","password":"12345678"}' | jq -r '.data.access_token')
+
+# 2. Health check (público, sin token)
+curl http://localhost:8002/api/health
+
+# 3. Listar las películas del Cine Center (requiere Bearer token)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8002/api/cinemas/1/movies
+```
+
+* **Público**: `GET /api/health`
+* **Jerarquía completa (token)**: `GET /api/cinemas[...]`, `.../movies[...]`, `.../auditoriums[...]` (ver tabla completa más abajo)
+* **Administración (token + rol `admin`)**: `POST/PUT/DELETE` anidados bajo `/api/cinemas`
+
+Todas las respuestas de `catalog-service` siguen el contrato `{code, message, data}` donde `code` es `200` en éxitos y `500` en errores (errores: `{code, message, data: null[, errors]}`). El estado HTTP conserva el detalle del fallo (`401`, `403`, `404`, `409`, `422`, `500`). Cualquier ruta inexistente (ej. `GET /auto` o `GET /api/auto`) responde `404` con mensaje `"Endpoint no encontrado"`.
+
+### 📣 Mensajes estándar (`catalog-service/packages/eventcore-messages`)
+
+Los mensajes de las respuestas de `catalog-service` viven en un **paquete composer local** (`eventcore/messages`) dentro del propio servicio, consumido vía repositorio `path`:
+
+* Catálogo único: `services/catalog-service/packages/eventcore-messages/resources/messages.php` (clave ⇒ mensaje, con placeholders `:x`).
+* Uso en código: `Messages::get('endpoint.not_found')` o `Messages::get('common.success')`.
+* Contrato compartido: trait `EventCore\Messages\ApiResponse` (`respondSuccess()` / `respondError()`).
+* Para sobreescribir mensajes: `php artisan vendor:publish --tag=eventcore-messages-config` y editar `config/messages.php`.
+* Si modificas el paquete, ejecuta `composer update eventcore/messages` en `catalog-service` (el paquete se copia a `vendor`, `symlink: false`).
+
+### 🎬 Dominio de cines
+
+El catálogo modela una cadena de cines con jerarquía estricta: `cinemas` → `movies` (película/función a nivel cine, con precio) → `auditoriums` (salas donde se proyecta simultáneamente; un estreno puede jugar en varias salas a la vez). **Todos** los endpoints viven anidados bajo esa cadena; no existen rutas sueltas. La venta de boletos (stock/reservas) será responsabilidad de `booking-service`.
+
+### 📄 Paginación
+
+Los GET de listados (`/cinemas`, `/cinemas/{cinema}/movies`, `/cinemas/{cinema}/movies/{movie}/auditoriums`) **siempre** responden paginados. Sin parámetros usan los defaults `page=1` y `per_page=15`; se pueden ajustar con `?page=N&per_page=N` (máx. 100). Parámetros inválidos → `422`.
+
+### 📚 Endpoints de `catalog-service`
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/health` | pública | Liveness/readiness |
+| GET | `/api/cinemas` | JWT | Cines paginados (`city`, `page`, `per_page`) |
+| POST | `/api/cinemas` | JWT+admin | Crear cine |
+| GET | `/api/cinemas/{cinema}` | JWT | Detalle con películas |
+| PUT | `/api/cinemas/{cinema}` | JWT+admin | Actualizar cine |
+| DELETE | `/api/cinemas/{cinema}` | JWT+admin | Soft delete (`409` si tiene películas) |
+| GET | `/api/cinemas/{cinema}/movies` | JWT | Películas paginadas |
+| POST | `/api/cinemas/{cinema}/movies` | JWT+admin | Crear película (requiere `price`) |
+| GET | `/api/cinemas/{cinema}/movies/{movie}` | JWT | Detalle con auditorios y cine |
+| PUT | `/api/cinemas/{cinema}/movies/{movie}` | JWT+admin | Actualizar película |
+| DELETE | `/api/cinemas/{cinema}/movies/{movie}` | JWT+admin | Soft delete |
+| GET | `/api/cinemas/{cinema}/movies/{movie}/auditoriums` | JWT | Auditorios paginados |
+| POST | `/api/cinemas/{cinema}/movies/{movie}/auditoriums` | JWT+admin | Crear auditorio (name, capacity) |
+| GET | `.../auditoriums/{auditorium}` | JWT | Detalle con película y cine |
+| PUT | `.../auditoriums/{auditorium}` | JWT+admin | Actualizar auditorio |
+| DELETE | `.../auditoriums/{auditorium}` | JWT+admin | Eliminar auditorio |
+
+Cada nivel valida la cadena (la película debe pertenecer al cine, el auditorio a la película) → `404` con mensaje `"Endpoint no encontrado"` si no coincide.
 
 ---
 
@@ -170,7 +254,7 @@ Crea la carpeta dentro de `services/`:
 ```
 
 ### 2. Copiar el `Dockerfile` y `.dockerignore`
-Copia el archivo `services/auth-service/Dockerfile` y `.dockerignore` a la nueva carpeta `services/catalog-service/`.
+Copia el archivo `services/auth-service/Dockerfile` y `.dockerignore` a la nueva carpeta `services/<servicio>/`. El build usa el contexto de la carpeta del servicio (`context: ./services/<servicio>`), igual que `auth-service` y `catalog-service`.
 
 ### 3. Registrar la nueva Base de Datos
 En `.env` raíz, añade el nombre de la nueva base de datos a `POSTGRES_MULTIPLE_DATABASES`:
