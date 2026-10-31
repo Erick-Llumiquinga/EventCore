@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\CinemasIndexRequest;
 use App\Models\Cinema;
+use App\Models\Movie;
 use EventCore\Messages\ApiResponse;
 use EventCore\Messages\Messages;
 use Illuminate\Http\JsonResponse;
@@ -38,7 +39,8 @@ class CinemaController extends Controller
     }
 
     /**
-     * GET /api/cinemas/{cinema} — single cinema with its auditoriums.
+     * GET /api/cinemas/{cinema} — single cinema with its movies
+     * (each with its showtimes and auditorium).
      */
     public function show(string $cinema): JsonResponse
     {
@@ -48,7 +50,19 @@ class CinemaController extends Controller
             return $this->respondError(Messages::get('endpoint.not_found'), 404);
         }
 
-        return $this->respondSuccess($record->load('auditoriums'), Messages::get('catalog.cinema.show'));
+        $movies = Movie::query()
+            ->whereHas('showtimes.auditorium', function ($auditoriumQuery) use ($record) {
+                $auditoriumQuery->where('cinema_id', $record->id);
+            })
+            ->with(['showtimes' => function ($showtimeQuery) use ($record) {
+                $showtimeQuery->whereHas('auditorium', function ($auditoriumQuery) use ($record) {
+                    $auditoriumQuery->where('cinema_id', $record->id);
+                })->with('auditorium')->orderBy('start_time');
+            }])
+            ->orderBy('title')
+            ->get();
+
+        return $this->respondSuccess($record->setRelation('movies', $movies), Messages::get('catalog.cinema.show'));
     }
 
     private function findCinema(string $cinema): ?Cinema

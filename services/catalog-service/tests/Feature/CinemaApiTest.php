@@ -50,15 +50,18 @@ class CinemaApiTest extends TestCase
             ->assertJsonPath('data.pagination.total', 0);
     }
 
-    public function test_show_returns_cinema_with_auditoriums(): void
+    public function test_show_returns_cinema_with_movies_and_showtimes(): void
     {
         $this->withToken($this->adminToken())
             ->getJson('/api/cinemas/1')
             ->assertOk()
             ->assertJsonPath('code', 200)
             ->assertJsonPath('data.name', 'Cine Multicentro Quito')
-            ->assertJsonCount(2, 'data.auditoriums')
-            ->assertJsonStructure(['data' => ['auditoriums' => [['id', 'cinema_id', 'name', 'capacity']]]]);
+            ->assertJsonCount(2, 'data.movies')
+            ->assertJsonStructure(['data' => ['movies' => [[
+                'id', 'title', 'duration_minutes', 'rating',
+                'showtimes' => [['id', 'start_time', 'format', 'auditorium' => ['id', 'name', 'capacity']]],
+            ]]]]);
     }
 
     public function test_show_returns_404_for_unknown_cinema(): void
