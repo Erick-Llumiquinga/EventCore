@@ -25,7 +25,7 @@ export const Login: React.FC = () => {
 
   const from =
     (location.state as { from?: { pathname: string } })?.from?.pathname ||
-    "/dashboard";
+    "/";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { LoginModal } from "../components/LoginModal";
 import {
   Ticket,
   Calendar,
@@ -27,7 +29,18 @@ const CAROUSEL_SLIDES = [
 ];
 
 export const Home: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  const handleReserveClick = () => {
+    if (!isAuthenticated) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    navigate("/peliculas");
+  };
 
   const nextSlide = useCallback(() => {
     setCurrentSlide((prev) => (prev + 1) % CAROUSEL_SLIDES.length);
@@ -129,15 +142,16 @@ export const Home: React.FC = () => {
               autenticación, centralizado y emisión de reservas.
             </p>
 
-            {/* Primary CTA Button: Reservar boletos -> Starts the booking flow */}
+            {/* Primary CTA Button: Reservar boletos -> Starts the booking flow (or asks to login first) */}
             <div className="flex items-center justify-center">
-              <Link
-                to="/peliculas"
+              <button
+                type="button"
+                onClick={handleReserveClick}
                 className="px-8 py-3.5 bg-[#C7AA78] hover:bg-[#d5bd92] text-[#1b1c20] font-bold text-sm sm:text-base rounded-2xl shadow-xl shadow-[#C7AA78]/20 transition-all flex items-center justify-center gap-2.5 group cursor-pointer"
               >
                 <span>Reservar boletos</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -179,6 +193,15 @@ export const Home: React.FC = () => {
           UNIBE
         </p>
       </footer>
+
+      {/* Login Modal when clicking "Reservar boletos" while unauthenticated */}
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+        onSuccess={() => {
+          setIsLoginModalOpen(false);
+        }}
+      />
     </div>
   );
 };

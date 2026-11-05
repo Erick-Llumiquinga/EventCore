@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import {
   User,
   Mail,
@@ -11,18 +11,22 @@ import {
   UserPlus,
   AlertCircle,
   ShieldCheck,
-} from 'lucide-react';
-import axios from 'axios';
+  IdCard,
+  Phone,
+} from "lucide-react";
+import axios from "axios";
 
 export const Register: React.FC = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [passwordConfirmation, setPasswordConfirmation] = useState('');
-  const [role, setRole] = useState<'admin' | 'organizer' | 'attendee'>('admin');
+  const [identification, setIdentification] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -34,12 +38,12 @@ export const Register: React.FC = () => {
     setFieldErrors({});
 
     if (password !== passwordConfirmation) {
-      setErrorMsg('Las contraseñas no coinciden');
+      setErrorMsg("Las contraseñas no coinciden");
       return;
     }
 
     if (password.length < 8) {
-      setErrorMsg('La contraseña debe tener al menos 8 caracteres');
+      setErrorMsg("La contraseña debe tener al menos 8 caracteres");
       return;
     }
 
@@ -47,23 +51,27 @@ export const Register: React.FC = () => {
 
     try {
       await register({
-        name,
+        identification,
+        first_name: firstName,
+        last_name: lastName,
+        phone: phone || undefined,
         email,
         password,
         password_confirmation: passwordConfirmation,
-        role,
       });
-      navigate('/dashboard', { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err: unknown) {
       if (axios.isAxiosError(err)) {
         if (err.response?.data?.errors) {
           setFieldErrors(err.response.data.errors);
         }
-        setErrorMsg(err.response?.data?.message || 'Error al registrar usuario');
+        setErrorMsg(
+          err.response?.data?.message || "Error al registrar usuario",
+        );
       } else if (err instanceof Error) {
         setErrorMsg(err.message);
       } else {
-        setErrorMsg('Error de conexión con el backend.');
+        setErrorMsg("Error de conexión con el backend.");
       }
     } finally {
       setIsSubmitting(false);
@@ -102,7 +110,7 @@ export const Register: React.FC = () => {
                       {Object.entries(fieldErrors).flatMap(([field, errors]) =>
                         errors.map((err, i) => (
                           <li key={`${field}-${i}`}>{err}</li>
-                        ))
+                        )),
                       )}
                     </ul>
                   )}
@@ -112,23 +120,80 @@ export const Register: React.FC = () => {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[#F2F0EB]/90 mb-1.5">
-                  Nombre Completo
-                </label>
-                <div className="relative">
-                  <User className="w-5 h-5 text-[#777777] absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Erick Llumiquinga"
-                    className="w-full pl-11 pr-4 py-2.5 bg-[#202124] border border-[#777777]/40 rounded-xl text-[#F2F0EB] placeholder-[#777777] text-sm focus:outline-none focus:border-[#C7AA78] focus:ring-1 focus:ring-[#C7AA78] transition-all"
-                  />
+              {/* Identification & Phone */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#F2F0EB]/90 mb-1.5">
+                    Cédula / Identificación
+                  </label>
+                  <div className="relative">
+                    <IdCard className="w-5 h-5 text-[#777777] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      value={identification}
+                      onChange={(e) => setIdentification(e.target.value)}
+                      placeholder="1700000001"
+                      className="w-full pl-11 pr-4 py-2.5 bg-[#202124] border border-[#777777]/40 rounded-xl text-[#F2F0EB] placeholder-[#777777] text-sm focus:outline-none focus:border-[#C7AA78] focus:ring-1 focus:ring-[#C7AA78] transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#F2F0EB]/90 mb-1.5">
+                    Teléfono
+                  </label>
+                  <div className="relative">
+                    <Phone className="w-5 h-5 text-[#777777] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="0999999999"
+                      className="w-full pl-11 pr-4 py-2.5 bg-[#202124] border border-[#777777]/40 rounded-xl text-[#F2F0EB] placeholder-[#777777] text-sm focus:outline-none focus:border-[#C7AA78] focus:ring-1 focus:ring-[#C7AA78] transition-all"
+                    />
+                  </div>
                 </div>
               </div>
 
+              {/* First Name & Last Name */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#F2F0EB]/90 mb-1.5">
+                    Nombres
+                  </label>
+                  <div className="relative">
+                    <User className="w-5 h-5 text-[#777777] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="Juan"
+                      className="w-full pl-11 pr-4 py-2.5 bg-[#202124] border border-[#777777]/40 rounded-xl text-[#F2F0EB] placeholder-[#777777] text-sm focus:outline-none focus:border-[#C7AA78] focus:ring-1 focus:ring-[#C7AA78] transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-[#F2F0EB]/90 mb-1.5">
+                    Apellidos
+                  </label>
+                  <div className="relative">
+                    <User className="w-5 h-5 text-[#777777] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Pérez"
+                      className="w-full pl-11 pr-4 py-2.5 bg-[#202124] border border-[#777777]/40 rounded-xl text-[#F2F0EB] placeholder-[#777777] text-sm focus:outline-none focus:border-[#C7AA78] focus:ring-1 focus:ring-[#C7AA78] transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Email */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-[#F2F0EB]/90 mb-1.5">
                   Correo Electrónico
@@ -146,33 +211,7 @@ export const Register: React.FC = () => {
                 </div>
               </div>
 
-              {/* Role selector */}
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[#F2F0EB]/90 mb-1.5">
-                  Rol Inicial
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'admin', label: 'Admin' },
-                    { id: 'organizer', label: 'Organizador' },
-                    { id: 'attendee', label: 'Asistente' },
-                  ].map((r) => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setRole(r.id as 'admin' | 'organizer' | 'attendee')}
-                      className={`py-2 px-3 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
-                        role === r.id
-                          ? 'bg-[#C7AA78]/20 border-[#C7AA78] text-[#C7AA78]'
-                          : 'bg-[#202124] border-[#777777]/30 text-[#777777] hover:border-[#777777]/60 hover:text-[#F2F0EB]'
-                      }`}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+              {/* Passwords */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-[#F2F0EB]/90 mb-1.5">
@@ -181,7 +220,7 @@ export const Register: React.FC = () => {
                   <div className="relative">
                     <Lock className="w-5 h-5 text-[#777777] absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
-                      type={showPassword ? 'text' : 'password'}
+                      type={showPassword ? "text" : "password"}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -193,7 +232,11 @@ export const Register: React.FC = () => {
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-[#777777] hover:text-[#F2F0EB]"
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -205,7 +248,7 @@ export const Register: React.FC = () => {
                   <div className="relative">
                     <ShieldCheck className="w-5 h-5 text-[#777777] absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
-                      type={showPassword ? 'text' : 'password'}
+                      type={showPassword ? "text" : "password"}
                       required
                       value={passwordConfirmation}
                       onChange={(e) => setPasswordConfirmation(e.target.value)}
@@ -233,8 +276,11 @@ export const Register: React.FC = () => {
             </form>
 
             <p className="mt-6 text-center text-sm text-[#F2F0EB]/70">
-              ¿Ya tienes cuenta?{' '}
-              <Link to="/login" className="font-semibold text-[#C7AA78] hover:text-[#d5bd92]">
+              ¿Ya tienes cuenta?{" "}
+              <Link
+                to="/login"
+                className="font-semibold text-[#C7AA78] hover:text-[#d5bd92]"
+              >
                 Inicia sesión aquí
               </Link>
             </p>

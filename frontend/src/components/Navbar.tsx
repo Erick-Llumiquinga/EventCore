@@ -34,7 +34,7 @@ export const Navbar: React.FC = () => {
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#222429] border border-white/10 hover:border-[#C7AA78]/50 transition-colors"
               >
                 <span className="text-xs font-medium text-[#F2F0EB]">
-                  {user.name}
+                  {user.person?.full_name || user.name}
                 </span>
                 <CircleUserRound className="w-5 h-5 text-[#F2F0EB]/80" />
               </Link>
