@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AuditoriumController as AdminAuditoriumController;
 use App\Http\Controllers\Admin\CinemaController as AdminCinemaController;
+use App\Http\Controllers\Admin\MovieCinemaController as AdminMovieCinemaController;
 use App\Http\Controllers\Admin\MovieController as AdminMovieController;
 use App\Http\Controllers\Admin\SeatController as AdminSeatController;
 use App\Http\Controllers\Admin\ShowtimeController as AdminShowtimeController;
@@ -35,6 +36,10 @@ Route::middleware('jwt.verify')->group(function () {
         Route::post('/cinemas', [AdminCinemaController::class, 'store']);
         Route::put('/cinemas/{cinema}', [AdminCinemaController::class, 'update']);
         Route::delete('/cinemas/{cinema}', [AdminCinemaController::class, 'destroy']);
+
+        // Billboard: many-to-many cinema <-> movie.
+        Route::post('/cinemas/{cinema}/movies', [AdminMovieCinemaController::class, 'sync']);
+        Route::delete('/cinemas/{cinema}/movies/{movie}', [AdminMovieCinemaController::class, 'detach']);
 
         Route::post('/movies', [AdminMovieController::class, 'store']);
         Route::put('/movies/{movie}', [AdminMovieController::class, 'update']);

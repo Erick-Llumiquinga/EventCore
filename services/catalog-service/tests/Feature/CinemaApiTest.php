@@ -50,18 +50,23 @@ class CinemaApiTest extends TestCase
             ->assertJsonPath('data.pagination.total', 0);
     }
 
-    public function test_show_returns_cinema_with_movies_and_showtimes(): void
+    public function test_show_returns_cinema_with_billboard_movies_and_showtimes(): void
     {
         $this->withToken($this->adminToken())
             ->getJson('/api/cinemas/1')
             ->assertOk()
             ->assertJsonPath('code', 200)
             ->assertJsonPath('data.name', 'Cine Multicentro Quito')
-            ->assertJsonCount(2, 'data.movies')
+            ->assertJsonCount(3, 'data.movies')
             ->assertJsonStructure(['data' => ['movies' => [[
                 'id', 'title', 'duration_minutes', 'rating',
                 'showtimes' => [['id', 'start_time', 'format', 'auditorium' => ['id', 'name', 'capacity']]],
             ]]]]);
+
+        // Galaxias is on the Quito billboard but has no showtimes there.
+        $this->withToken($this->adminToken())
+            ->getJson('/api/cinemas/1')
+            ->assertJsonPath('data.movies.0.title', 'Abyssal — Terror submarino');
     }
 
     public function test_show_returns_404_for_unknown_cinema(): void

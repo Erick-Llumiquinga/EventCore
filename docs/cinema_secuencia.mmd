@@ -1,0 +1,55 @@
+sequenceDiagram
+    autonumber
+    actor C as Cliente / Postman
+    participant G as Gateway nginx<br/>:8000
+    participant S as catalog-service<br/>Laravel :8000
+    participant R as Redis<br/>blacklist JWT
+    participant D as PostgreSQL<br/>catalog_db
+
+    rect rgb(239, 246, 255)
+        Note over C,D: Escenario A — GET detalle de cine (JWT)
+        C->>G: GET /api/catalog/cinemas/1<br/>Authorization: Bearer JWT
+        G->>S: GET /api/cinemas/1 (strip /api/catalog)
+        S->>S: jwt.verify: decodifica JWT<br/>¿jti en blacklist?
+        S->>R: consultar blacklist
+        R-->>S: no revocado
+        S->>S: ctype_digit(1) → find(1)<br/>movies + showtimes (pivote + auditorium)
+        S-->>G: 200 {code:200, message, data:{cinema, movies, showtimes}}
+        G-->>C: 200 {code:200, message, data:{...}}
+    end
+
+    rect rgb(240, 253, 244)
+        Note over C,D: Escenario B — POST crear cine (JWT + admin)
+        C->>G: POST /api/catalog/cinemas<br/>Bearer JWT admin + JSON
+        G->>S: POST /api/cinemas
+        S->>S: jwt.verify → role:admin (¿rol admin?)
+        S->>S: StoreCinemaRequest valida<br/>name, address, city
+        alt campos inválidos
+            S-->>C: 422 {code:500, message:"Errores de validación", errors:{...}}
+        else válido
+            S->>D: INSERT INTO cinemas<br/>(created_by=updated_by=sub JWT)
+            D-->>S: id=3
+            S-->>C: 201 {code:200, message:"Cine creado correctamente", data:{id:3}}
+        end
+    end
+
+    rect rgb(254, 243, 199)
+        Note over C,D: Escenario C — POST sync de cartelera (JWT + admin)
+        C->>G: POST /api/catalog/cinemas/1/movies<br/>{"movie_ids":[uuid1, uuid2]}
+        G->>S: POST /api/cinemas/1/movies
+        S->>S: role:admin → SyncCinemaMoviesRequest<br/>(array de UUIDs existentes)
+        S->>D: DELETE + INSERT movie_cinema<br/>(sync = reemplaza cartelera)
+        D-->>S: OK
+        S-->>C: 200 {code:200, message, data:[peliculas ordenadas]}
+    end
+
+    rect rgb(254, 242, 242)
+        Note over C,D: Escenarios de error
+        C->>G: cualquier request sin/vencido JWT
+        S-->>C: 401 {code:500, message:"Token..."}
+        Note over C,D: DELETE cine con salas o funciones
+        C->>G: DELETE /api/catalog/cinemas/1
+        S->>D: ¿auditoriums o showtimes?
+        D-->>S: sí
+        S-->>C: 409 "No se puede eliminar: el cine tiene salas o funciones asociadas"
+    end
