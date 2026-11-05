@@ -4,12 +4,12 @@ flowchart TD
     auth["auth-service<br/>Laravel · JWT HS256<br/>:8001"]
     catalog["catalog-service<br/>Laravel REST<br/>:8002"]
 
-    subgraph pg["PostgreSQL 16 (contenedor único)"]
+    subgraph pg["PostgreSQL · localhost:5432 (contenedor único)"]
         authdb[("auth_db<br/>users · roles")]
         catalogdb[("catalog_db<br/>cinemas · movies<br/>auditoriums")]
     end
 
-    redis[("Redis 7<br/>caché + blacklist de JWT")]
+    redis[("Redis · localhost:6379<br/>caché + blacklist de JWT")]
 
     usuario -- "HTTP :5173" --> frontend
     frontend -- "① POST /api/auth/login o /register<br/>→ devuelve JWT firmado" --> auth

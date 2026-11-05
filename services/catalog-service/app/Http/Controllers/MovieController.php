@@ -45,8 +45,8 @@ class MovieController extends Controller
     }
 
     /**
-     * GET /api/movies/{movie} — movie detail with its showtimes
-     * (each with auditorium, cinema and ticket types).
+     * GET /api/movies/{movie} — movie detail with its cinemas (billboard)
+     * and showtimes (each with auditorium, cinema and ticket types).
      */
     public function show(string $movie): JsonResponse
     {
@@ -57,7 +57,7 @@ class MovieController extends Controller
         }
 
         return $this->respondSuccess(
-            $record->load(['showtimes.auditorium.cinema', 'showtimes.ticketTypes']),
+            $record->load(['cinemas', 'showtimes.auditorium.cinema', 'showtimes.ticketTypes']),
             Messages::get('catalog.movie.show')
         );
     }
