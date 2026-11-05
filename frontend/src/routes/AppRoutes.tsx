@@ -21,12 +21,47 @@ export const AppRoutes: React.FC = () => {
           {/* Main Landing with Full-Width Carousel */}
           <Route path="/" element={<Home />} />
 
-          {/* 5 Individual Cinema Booking Screens */}
-          <Route path="/peliculas" element={<SelectMovie />} />
-          <Route path="/funcion" element={<SelectShowtime />} />
-          <Route path="/asientos" element={<SelectSeats />} />
-          <Route path="/pago" element={<CheckoutPayment />} />
-          <Route path="/confirmacion" element={<BookingConfirmed />} />
+          {/* 5 Individual Cinema Booking Screens (Protected) */}
+          <Route
+            path="/peliculas"
+            element={
+              <ProtectedRoute>
+                <SelectMovie />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/funcion"
+            element={
+              <ProtectedRoute>
+                <SelectShowtime />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/asientos"
+            element={
+              <ProtectedRoute>
+                <SelectSeats />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pago"
+            element={
+              <ProtectedRoute>
+                <CheckoutPayment />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/confirmacion"
+            element={
+              <ProtectedRoute>
+                <BookingConfirmed />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Auth Routes */}
           <Route path="/login" element={<Login />} />
