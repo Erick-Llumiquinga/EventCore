@@ -1,0 +1,47 @@
+flowchart TD
+    cliente["Cliente<br/>Postman / curl / futuro frontend<br/>localhost:8000"]
+
+    subgraph gw["API Gateway — nginx :8000"]
+        loc["location /api/catalog/<br/>proxy_pass http://catalog-service:8000/api/<br/>(elimina el prefijo /api/catalog)"]
+    end
+
+    subgraph svc["catalog-service — Laravel :8000"]
+        jwt{"middleware<br/>jwt.verify<br/>Bearer JWT válido?"}
+        branch{"¿ruta admin?"}
+        role{"middleware<br/>role:admin"}
+        frPub["FormRequest público<br/>CinemasIndexRequest"]
+        frAdm["FormRequest admin<br/>Store / Update / Sync"]
+        pub["CinemaController (público)<br/>━━━━━━━━━━━━<br/>GET /api/catalog/cinemas<br/>→ 200 paginado + ?city=<br/>GET /api/catalog/cinemas/{id}<br/>→ 200 cine + movies + showtimes"]
+        adm["Admin CinemaController + MovieCinemaController<br/>━━━━━━━━━━━━<br/>POST /api/catalog/cinemas → 201 created_by<br/>PUT /api/catalog/cinemas/{id} → 200 updated_by<br/>DELETE /api/catalog/cinemas/{id} → 200 / 409 con salas<br/>POST .../cinemas/{id}/movies → 200 sync cartelera<br/>DELETE .../cinemas/{id}/movies/{movie} → 200 detach"]
+        resp["ApiResponse<br/>{code, message, data}"]
+    end
+
+    err["Respuestas de error — {code:500}<br/>401 sin/vencido/revocado/inválido · 403 rol ≠ admin<br/>422 validación con errors"]
+
+    jwt -- "401" --> err
+    jwt -- "OK: setea auth_user_id (sub)" --> branch
+    branch -- "sí" --> role
+    branch -- "no (público)" --> frPub
+    role -- "403" --> err
+    role -- "admin OK" --> frAdm
+    frPub -- "422" --> err
+    frAdm -- "422" --> err
+    frPub -- "OK" --> pub
+    frAdm -- "OK" --> adm
+    pub --> resp
+    adm --> resp
+    resp --> db[("PostgreSQL<br/>catalog_db<br/>cinemas · movie_cinema<br/>auditoriums · showtimes")]
+    jwt -.-> redis[("Redis<br/>blacklist de JWT<br/>(jti en logout)")]
+
+    cliente --> loc
+    loc --> jwt
+
+    classDef browser fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef service fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef store fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+    classDef error fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
+
+    class cliente browser
+    class loc,jwt,branch,role,frPub,frAdm,pub,adm,resp service
+    class db,redis store
+    class err error

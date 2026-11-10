@@ -15,7 +15,26 @@ class RoleSeeder extends Seeder
     {
         Role::firstOrCreate(
             ['slug' => 'admin'],
-            ['name' => 'Administrador', 'description' => 'Acceso total al sistema']
+            [
+                'name' => 'Administrador',
+                'description' => 'Acceso total al sistema, gestión de usuarios, roles y métricas globales',
+            ]
+        );
+
+        Role::firstOrCreate(
+            ['slug' => 'organizer'],
+            [
+                'name' => 'Organizador',
+                'description' => 'Gestión y creación de eventos propios, localidades, precios y validación de QRs',
+            ]
+        );
+
+        Role::firstOrCreate(
+            ['slug' => 'client'],
+            [
+                'name' => 'Cliente',
+                'description' => 'Cliente del cine: consulta cartelera, reserva butacas, compra entradas y consulta al asistente IA',
+            ]
         );
     }
 }
