@@ -11,7 +11,8 @@ Plataforma escalable de gestión y reserva de eventos construida bajo una arquit
 * **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS (`http://localhost:5173`)
 * **Auth Service**: Laravel 13 (PHP 8.4) + JWT Auth (`http://localhost:8001`)
 * **Catalog Service**: Laravel 13 (PHP 8.4) + PostgreSQL `catalog_db` (`http://localhost:8002`)
-* **Base de Datos**: PostgreSQL 16 (`localhost:5432` / `auth_db`, `catalog_db`)
+* **Assistant Service**: Laravel 13 (PHP 8.4) + **DeepSeek IA** (asistente virtual en español, streaming SSE vía `/api/assistant/chat`)
+* **Base de Datos**: PostgreSQL 16 (`localhost:5432` / `auth_db`, `catalog_db`, `assistant_db`)
 * **Caché y Locks**: Redis 7 (`localhost:6379`)
 
 ---
@@ -43,6 +44,9 @@ cp .env.example .env
 
 # Entorno de Auth Service
 cp services/auth-service/.env.example services/auth-service/.env
+
+# Entorno del Asistente IA
+cp services/assistant-service/.env.example services/assistant-service/.env
 
 # Entorno de Frontend
 cp frontend/.env.example frontend/.env
@@ -209,6 +213,65 @@ Los GET de listados (`/cinemas`, `/cinemas/{cinema}/movies`, `/cinemas/{cinema}/
 | DELETE | `.../auditoriums/{auditorium}` | JWT+admin | Eliminar auditorio |
 
 Cada nivel valida la cadena (la película debe pertenecer al cine, el auditorio a la película) → `404` con mensaje `"Endpoint no encontrado"` si no coincide.
+
+---
+
+## 🤖 Configuración Inicial de `assistant-service`
+
+Asistente virtual IA que responde preguntas en lenguaje natural (películas en cartelera, horarios, disponibilidad, estado de asientos) consultando `catalog-service` mediante **function calling** y transmitiendo la respuesta en **streaming SSE**.
+
+> **IMPORTANTE**: igual que `catalog-service`, verifica los tokens de `auth-service`, así que su `JWT_SECRET` **debe ser idéntico** al de `services/auth-service/.env` (nunca ejecutes `jwt:secret`; copia el valor).
+
+```bash
+# 1. Entorno del servicio (si no existe)
+cp services/assistant-service/.env.example services/assistant-service/.env
+
+# 2. Copiar APP_KEY y JWT_SECRET desde services/auth-service/.env
+
+# 3. Crear la base de datos (el init de Postgres solo corre en el primer arranque)
+docker compose exec postgres psql -U postgres -c "CREATE DATABASE assistant_db;"
+
+# 4. Generar tablas de conversaciones y mensajes
+./eventcore.sh artisan assistant key:generate
+./eventcore.sh artisan assistant config:clear
+./eventcore.sh artisan assistant migrate
+```
+
+### 🧠 Modos de IA
+
+La IA se configura en la **raíz** (`.env` raíz) y se inyecta al contenedor:
+
+* `ASSISTANT_MOCK=true` (**default**): sin API key. Un `MockIntentResolver` local interpreta la intención, ejecuta la misma herramienta de catálogo y redacta una respuesta en español. Ideal para desarrollo y demos.
+* `ASSISTANT_MOCK=false` + `DEEPSEEK_API_KEY=<clave>`: modo real con DeepSeek (`deepseek-chat`), streaming y hasta 4 iteraciones de tool calling por turno.
+
+El health reporta el modo activo: `{"service":"assistant-service","database":"ok","ai":"mock"|"deepseek"}`.
+
+> ⚠️ `php artisan serve` solo reenvía un whitelist de variables al proceso HTTP; por eso el `CMD` del `Dockerfile` usa `artisan serve --host=0.0.0.0 --port=8000 --no-reload` (si no, `DEEPSEEK_API_KEY`/`CATALOG_SERVICE_URL` no llegan).
+
+### 📚 Endpoints de `assistant-service`
+
+Externos (vía gateway `http://localhost:8000`):
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/assistant/health` | pública | Liveness + estado de DB e IA |
+| POST | `/api/assistant/chat` | JWT | Chat SSE (20 req/min). Body: `{message, conversation_id?}` |
+| GET | `/api/assistant/conversations` | JWT | Conversaciones propias paginadas |
+| GET | `/api/assistant/conversations/{id}` | JWT | Conversación con historial de mensajes |
+| DELETE | `/api/assistant/conversations/{id}` | JWT | Eliminar conversación (own-only) |
+
+### 📣 Protocolo SSE de `POST /api/assistant/chat`
+
+```
+event: tool   → {"name":"list_movies","arguments":{...},"ok":true,"error":null}
+event: delta  → {"text":"Encontré 3 película(s)..."}
+event: done   → {"conversation_id":"...","message_id":2,"mode":"mock","usage":[]}
+event: error  → {"message":"..."}   // solo en fallo
+```
+
+Herramientas disponibles (solo lectura contra `catalog-service`): `list_movies`, `get_movie`, `list_showtimes` (requiere al menos `date`, `cinema_id` o `movie_id`), `get_showtime`, `get_showtime_seats`, `list_cinemas`.
+
+Respuestas JSON estándar `{code, message, data}`; el chat es la única excepción (stream `text/event-stream`).
 
 ---
 

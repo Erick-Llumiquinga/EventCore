@@ -1,0 +1,840 @@
+{
+  "info": {
+    "name": "EventCore API",
+    "description": "Colección completa de EventCore — 46 endpoints (12 auth + 9 lectura catálogo + 20 admin catálogo + 5 asistente IA).\n\n**Uso:**\n1. Asegúrate de que el stack esté arriba: `docker compose up -d`\n2. Ejecuta primero **POST /auth/login** (guarda el token automáticamente en la variable `token`)\n3. Las carpetas se ejecutan de arriba hacia abajo\n4. El flujo Admin es secuencial: crear → editar → borrar (no toca los datos seed)\n5. **POST /auth/logout** invalida el token — vuelve a ejecutar Login después\n6. El asistente usa modo mock (`ASSISTANT_MOCK=true`) — `POST /chat` responde con streaming SSE\n\nGateway: `http://localhost:8000` (auth en `/api/auth/*`, catálogo en `/api/catalog/*`, asistente en `/api/assistant/*`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "token", "value": "" },
+    { "key": "cinema_id", "value": "1" },
+    { "key": "movie_id", "value": "" },
+    { "key": "showtime_id", "value": "1" },
+    { "key": "user_id", "value": "2" },
+    { "key": "new_cinema_id", "value": "" },
+    { "key": "new_movie_id", "value": "" },
+    { "key": "new_auditorium_id", "value": "" },
+    { "key": "new_showtime_id", "value": "" },
+    { "key": "new_ticket_type_id", "value": "" },
+    { "key": "new_seat_id", "value": "" },
+    { "key": "conversation_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth (12)",
+      "description": "Autenticación y gestión de usuarios. Ejecuta Login primero.",
+      "item": [
+        {
+          "name": "POST /auth/register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identification\": \"9{{timestamp}}\",\n  \"first_name\": \"Demo\",\n  \"last_name\": \"Postman\",\n  \"phone\": \"0999999991\",\n  \"email\": \"demo{{$guid}}@test.com\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/register", "host": ["{{base_url}}"], "path": ["api", "auth", "register"] },
+            "description": "Registro de cliente (crea persona + usuario). `identification` y `email` son únicos — las variables dinámicas permiten re-ejecutar."
+          }
+        },
+        {
+          "name": "POST /auth/login ★",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login exitoso - token guardado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json();",
+                  "    pm.collectionVariables.set('token', data.data.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@eventcore.com\",\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] },
+            "description": "Ejecútalo PRIMERO. Guarda `data.access_token` en la variable de colección `token`."
+          }
+        },
+        {
+          "name": "GET /auth/me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/me", "host": ["{{base_url}}"], "path": ["api", "auth", "me"] },
+            "description": "Perfil del usuario autenticado."
+          }
+        },
+        {
+          "name": "POST /auth/refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Token refrescado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.collectionVariables.set('token', pm.response.json().data.access_token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/refresh", "host": ["{{base_url}}"], "path": ["api", "auth", "refresh"] },
+            "description": "Renueva el token y actualiza `token`."
+          }
+        },
+        {
+          "name": "PUT /auth/profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Super\",\n  \"last_name\": \"Admin\",\n  \"phone\": \"0999999991\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/profile", "host": ["{{base_url}}"], "path": ["api", "auth", "profile"] },
+            "description": "Actualiza datos personales del usuario autenticado (idempotente con valores del seed)."
+          }
+        },
+        {
+          "name": "PUT /auth/password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"password123\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/password", "host": ["{{base_url}}"], "path": ["api", "auth", "password"] },
+            "description": "Cambia la contraseña. Usa la misma contraseña para no romper el login."
+          }
+        },
+        {
+          "name": "GET /auth/users (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Captura user_id', function () {",
+                  "    var data = pm.response.json();",
+                  "    if (data.data && data.data.users && data.data.users.length) {",
+                  "        pm.collectionVariables.set('user_id', String(data.data.users[0].user.id));",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/users", "host": ["{{base_url}}"], "path": ["api", "auth", "users"] },
+            "description": "Lista paginada de usuarios (admin). Captura `user_id` del primero."
+          }
+        },
+        {
+          "name": "GET /auth/users/{id} (admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["api", "auth", "users", "{{user_id}}"] },
+            "description": "Detalle de usuario."
+          }
+        },
+        {
+          "name": "PUT /auth/users/{id}/status (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/users/{{user_id}}/status", "host": ["{{base_url}}"], "path": ["api", "auth", "users", "{{user_id}}", "status"] },
+            "description": "Activa/desactiva cuenta. Con `is_active: true` es idempotente."
+          }
+        },
+        {
+          "name": "PUT /auth/users/{id}/toggle-status (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/users/{{user_id}}/toggle-status", "host": ["{{base_url}}"], "path": ["api", "auth", "users", "{{user_id}}", "toggle-status"] },
+            "description": "Misma acción por ruta alternativa."
+          }
+        },
+        {
+          "name": "GET /auth/roles (admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/roles", "host": ["{{base_url}}"], "path": ["api", "auth", "roles"] },
+            "description": "Lista de roles del sistema."
+          }
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] },
+            "description": "⚠️ Invalida el token. Ejecútalo al FINAL — vuelve a correr Login después."
+          }
+        }
+      ]
+    },
+    {
+      "name": "📖 Catálogo — Lectura (9)",
+      "description": "Endpoints públicos y de lectura con token.",
+      "item": [
+        {
+          "name": "GET /catalog/health (público)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/catalog/health", "host": ["{{base_url}}"], "path": ["api", "catalog", "health"] },
+            "description": "Liveness check — no requiere token."
+          }
+        },
+        {
+          "name": "GET /catalog/cinemas",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/catalog/cinemas?per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "catalog", "cinemas"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Página (opcional)" },
+                { "key": "per_page", "value": "15", "description": "Por página" },
+                { "key": "city", "value": "", "description": "Filtro por ciudad (opcional)" }
+              ]
+            },
+            "description": "Lista paginada: `{ data: { cinemas: [...], pagination: {...} } }`."
+          }
+        },
+        {
+          "name": "GET /catalog/cinemas/{id}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{cinema_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{cinema_id}}"] },
+            "description": "Detalle del cine con su cartelera: `movies[] → showtimes[] → auditorium`."
+          }
+        },
+        {
+          "name": "GET /catalog/movies",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Captura movie_id', function () {",
+                  "    var data = pm.response.json();",
+                  "    if (data.data && data.data.movies && data.data.movies.length) {",
+                  "        pm.collectionVariables.set('movie_id', data.data.movies[0].id);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/catalog/movies?per_page=15",
+              "host": ["{{base_url}}"],
+              "path": ["api", "catalog", "movies"],
+              "query": [
+                { "key": "page", "value": "1", "description": "Página (opcional)" },
+                { "key": "per_page", "value": "15", "description": "Por página" },
+                { "key": "status", "value": "", "description": "draft | published | finished (opcional)" },
+                { "key": "cinema_id", "value": "", "description": "Filtra por cine vía showtimes (opcional)" }
+              ]
+            },
+            "description": "Lista paginada. Captura `movie_id` de la primera película para los endpoints {id}."
+          }
+        },
+        {
+          "name": "GET /catalog/movies/{id}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/movies/{{movie_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "movies", "{{movie_id}}"] },
+            "description": "Detalle con `cinemas[]` (cartelera) y `showtimes[]` (con auditorium, cinema y ticket_types). Ejecuta antes GET /movies."
+          }
+        },
+        {
+          "name": "GET /catalog/showtimes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Captura showtime_id', function () {",
+                  "    var data = pm.response.json();",
+                  "    if (data.data && data.data.showtimes && data.data.showtimes.length) {",
+                  "        pm.collectionVariables.set('showtime_id', String(data.data.showtimes[0].id));",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/catalog/showtimes?cinema_id={{cinema_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "catalog", "showtimes"],
+              "query": [
+                { "key": "movie_id", "value": "", "description": "UUID de película (opcional)" },
+                { "key": "cinema_id", "value": "{{cinema_id}}", "description": "ID de cine (opcional)" },
+                { "key": "date", "value": "", "description": "YYYY-MM-DD (opcional)" },
+                { "key": "per_page", "value": "15", "description": "Por página" }
+              ]
+            },
+            "description": "Requiere al menos 1 filtro (movie_id, cinema_id o date). Captura `showtime_id`."
+          }
+        },
+        {
+          "name": "GET /catalog/showtimes/{id}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/showtimes/{{showtime_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "showtimes", "{{showtime_id}}"] },
+            "description": "Detalle de la función con movie, auditorium, cinema y ticket_types."
+          }
+        },
+        {
+          "name": "GET /catalog/showtimes/{id}/ticket-types",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/showtimes/{{showtime_id}}/ticket-types", "host": ["{{base_url}}"], "path": ["api", "catalog", "showtimes", "{{showtime_id}}", "ticket-types"] },
+            "description": "Tipos de entrada y precios de la función."
+          }
+        },
+        {
+          "name": "GET /catalog/showtimes/{id}/seats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/showtimes/{{showtime_id}}/seats", "host": ["{{base_url}}"], "path": ["api", "catalog", "showtimes", "{{showtime_id}}", "seats"] },
+            "description": "Mapa de asientos de la sala asignada a la función."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🛠 Catálogo — Admin (20)",
+      "description": "CRUD completo + cartelera. Cadena secuencial: cada POST captura su `new_*_id` para los siguientes pasos. Al final limpia todo lo creado (no toca datos seed).",
+      "item": [
+        {
+          "name": "POST /cinemas (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cine creado - captura new_cinema_id', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.collectionVariables.set('new_cinema_id', String(pm.response.json().data.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cine Postman Demo\",\n  \"address\": \"Av. Demo 123\",\n  \"city\": \"Quito\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/cinemas", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas"] },
+            "description": "Crea un cine. Captura `new_cinema_id`."
+          }
+        },
+        {
+          "name": "PUT /cinemas/{id} (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cine Postman Demo Updated\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{new_cinema_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{new_cinema_id}}"] },
+            "description": "Actualiza el cine creado."
+          }
+        },
+        {
+          "name": "POST /movies (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Película creada - captura new_movie_id', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.collectionVariables.set('new_movie_id', pm.response.json().data.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Película Postman Demo\",\n  \"description\": \"Película creada desde la colección de Postman para probar el CRUD del catálogo.\",\n  \"duration_minutes\": 99,\n  \"rating\": \"+12\",\n  \"poster_url\": \"https://picsum.photos/seed/postman/1200/630\",\n  \"status\": \"draft\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/movies", "host": ["{{base_url}}"], "path": ["api", "catalog", "movies"] },
+            "description": "Crea una película (UUID). Captura `new_movie_id`."
+          }
+        },
+        {
+          "name": "PUT /movies/{id} (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Película Postman Demo Updated\",\n  \"status\": \"published\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/movies/{{new_movie_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "movies", "{{new_movie_id}}"] },
+            "description": "Actualiza la película creada."
+          }
+        },
+        {
+          "name": "POST /auditoriums (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Auditorio creado - captura new_auditorium_id', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.collectionVariables.set('new_auditorium_id', String(pm.response.json().data.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cinema_id\": \"{{new_cinema_id}}\",\n  \"name\": \"Sala Postman\",\n  \"capacity\": 40\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/auditoriums", "host": ["{{base_url}}"], "path": ["api", "catalog", "auditoriums"] },
+            "description": "Crea una sala en el cine creado. Captura `new_auditorium_id`."
+          }
+        },
+        {
+          "name": "PUT /auditoriums/{id} (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sala Postman IMAX\",\n  \"capacity\": 55\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/auditoriums/{{new_auditorium_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "auditoriums", "{{new_auditorium_id}}"] },
+            "description": "Actualiza la sala creada."
+          }
+        },
+        {
+          "name": "POST /showtimes (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Función creada - captura new_showtime_id', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.collectionVariables.set('new_showtime_id', String(pm.response.json().data.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"movie_id\": \"{{new_movie_id}}\",\n  \"auditorium_id\": \"{{new_auditorium_id}}\",\n  \"start_time\": \"2027-06-15 20:00:00\",\n  \"format\": \"2D\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/showtimes", "host": ["{{base_url}}"], "path": ["api", "catalog", "showtimes"] },
+            "description": "Crea una función (movie + sala + fecha futura). Captura `new_showtime_id`."
+          }
+        },
+        {
+          "name": "PUT /showtimes/{id} (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"format\": \"4D\",\n  \"start_time\": \"2027-06-16 21:30:00\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/showtimes/{{new_showtime_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "showtimes", "{{new_showtime_id}}"] },
+            "description": "Actualiza la función creada."
+          }
+        },
+        {
+          "name": "POST /ticket-types (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Tipo de entrada creado - captura new_ticket_type_id', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.collectionVariables.set('new_ticket_type_id', String(pm.response.json().data.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtime_id\": \"{{new_showtime_id}}\",\n  \"name\": \"General\",\n  \"price\": 12.50\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/ticket-types", "host": ["{{base_url}}"], "path": ["api", "catalog", "ticket-types"] },
+            "description": "Crea un tipo de entrada para la función. Captura `new_ticket_type_id`."
+          }
+        },
+        {
+          "name": "PUT /ticket-types/{id} (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 15.00\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/ticket-types/{{new_ticket_type_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "ticket-types", "{{new_ticket_type_id}}"] },
+            "description": "Actualiza el precio."
+          }
+        },
+        {
+          "name": "POST /seats (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Asiento creado - captura new_seat_id', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.collectionVariables.set('new_seat_id', String(pm.response.json().data.id));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"auditorium_id\": \"{{new_auditorium_id}}\",\n  \"row_label\": \"Z\",\n  \"seat_number\": 1,\n  \"status\": \"active\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/seats", "host": ["{{base_url}}"], "path": ["api", "catalog", "seats"] },
+            "description": "Crea un asiento en la sala creada. Captura `new_seat_id`."
+          }
+        },
+        {
+          "name": "PUT /seats/{id} (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"maintenance\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/seats/{{new_seat_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "seats", "{{new_seat_id}}"] },
+            "description": "Cambia el estado del asiento."
+          }
+        },
+        {
+          "name": "POST /cinemas/{id}/movies — sync cartelera (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"movie_ids\": [\"{{new_movie_id}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{new_cinema_id}}/movies", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{new_cinema_id}}", "movies"] },
+            "description": "Sincroniza la cartelera completa del cine con la lista dada (reemplaza la anterior). Relación M:N cine↔película."
+          }
+        },
+        {
+          "name": "DELETE /cinemas/{id}/movies/{movieId} — detach (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{new_cinema_id}}/movies/{{new_movie_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{new_cinema_id}}", "movies", "{{new_movie_id}}"] },
+            "description": "Retira una película de la cartelera sin borrarla."
+          }
+        },
+        {
+          "name": "DELETE /ticket-types/{id} (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/ticket-types/{{new_ticket_type_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "ticket-types", "{{new_ticket_type_id}}"] },
+            "description": "Limpieza: borra el tipo de entrada creado."
+          }
+        },
+        {
+          "name": "DELETE /showtimes/{id} (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/showtimes/{{new_showtime_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "showtimes", "{{new_showtime_id}}"] },
+            "description": "Limpieza: borra la función (antes que la sala)."
+          }
+        },
+        {
+          "name": "DELETE /seats/{id} (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/seats/{{new_seat_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "seats", "{{new_seat_id}}"] },
+            "description": "Limpieza: borra el asiento creado."
+          }
+        },
+        {
+          "name": "DELETE /auditoriums/{id} (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/auditoriums/{{new_auditorium_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "auditoriums", "{{new_auditorium_id}}"] },
+            "description": "Limpieza: borra la sala (sin funciones pendientes)."
+          }
+        },
+        {
+          "name": "DELETE /movies/{id} (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/movies/{{new_movie_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "movies", "{{new_movie_id}}"] },
+            "description": "Limpieza: soft-delete de la película creada."
+          }
+        },
+        {
+          "name": "DELETE /cinemas/{id} (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{new_cinema_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{new_cinema_id}}"] },
+            "description": "Limpieza final: soft-delete del cine (ya sin salas)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🤖 Asistente (5)",
+      "description": "Asistente IA vía SSE (`/api/assistant/*`). Ejecuta Login primero. El chat corre en modo mock (`ASSISTANT_MOCK=true`) y emite los eventos `tool` / `delta` / `done` / `error`. Crea una conversación que luego se lista, se abre y se borra.",
+      "item": [
+        {
+          "name": "GET /assistant/health (público)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/assistant/health", "host": ["{{base_url}}"], "path": ["api", "assistant", "health"] },
+            "description": "Liveness del asistente — sin token."
+          }
+        },
+        {
+          "name": "POST /assistant/chat (SSE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Chat SSE respondió 200 con eventos', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var body = pm.response.text();",
+                  "    pm.expect(body).to.include('event:');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Qué películas están en cartelera?\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/assistant/chat", "host": ["{{base_url}}"], "path": ["api", "assistant", "chat"] },
+            "description": "Chat en streaming SSE. `message` es obligatorio (máx 4000); `session_id` (uuid) es opcional para continuar una conversación. Throttle: 20 req/min. Eventos: `tool` (consulta al catálogo), `delta` (fragmento de respuesta), `done` (ids de conversación/mensaje) y `error`."
+          }
+        },
+        {
+          "name": "GET /assistant/conversations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista paginada + captura conversation_id', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('conversations');",
+                  "    pm.expect(data).to.have.property('pagination');",
+                  "    if (data.conversations.length) {",
+                  "        pm.collectionVariables.set('conversation_id', data.conversations[0].id);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/assistant/conversations", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations"] },
+            "description": "Conversaciones del usuario autenticado (paginado, `?per_page=`). Guarda el primer id en `conversation_id`."
+          }
+        },
+        {
+          "name": "GET /assistant/conversations/{conversation}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/assistant/conversations/{{conversation_id}}", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations", "{{conversation_id}}"] },
+            "description": "Detalle de la conversación con sus mensajes. Requiere haber ejecutado la lista antes (o el chat)."
+          }
+        },
+        {
+          "name": "DELETE /assistant/conversations/{conversation}",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/assistant/conversations/{{conversation_id}}", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations", "{{conversation_id}}"] },
+            "description": "Borra la conversación capturada."
+          }
+        }
+      ]
+    }
+  ]
+}
