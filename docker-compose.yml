@@ -125,6 +125,31 @@ services:
     networks:
       - eventcore-net
 
+  booking-service:
+    build:
+      context: ./services/booking-service
+      dockerfile: Dockerfile
+    container_name: booking-service
+    restart: unless-stopped
+    volumes:
+      - ./services/booking-service:/var/www/html
+      - /var/www/html/vendor # Avoid overwriting the container's `vendor` directory
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres # Service name in the Docker network
+      DB_PORT: 5432
+      DB_DATABASE: booking_db
+      DB_USERNAME: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eventcore-net
+
   # ==========================================
   # 3. Microservices (Laravel)
   # ==========================================
@@ -140,6 +165,7 @@ services:
       - auth-service
       - catalog-service
       - assistant-service
+      - booking-service
     networks:
       - eventcore-net
 

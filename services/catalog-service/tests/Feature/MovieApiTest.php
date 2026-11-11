@@ -114,6 +114,7 @@ class MovieApiTest extends TestCase
             ->assertJsonStructure([
                 'data' => [
                     'title', 'description', 'duration_minutes', 'rating', 'poster_url', 'status',
+                    'cinemas' => [['id', 'name', 'city']],
                     'showtimes' => [[
                         'id', 'start_time', 'format',
                         'auditorium' => ['id', 'name', 'cinema' => ['id', 'name']],

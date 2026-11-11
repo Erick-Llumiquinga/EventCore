@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "EventCore API",
-    "description": "Colección completa de EventCore — 46 endpoints (12 auth + 9 lectura catálogo + 20 admin catálogo + 5 asistente IA).\n\n**Uso:**\n1. Asegúrate de que el stack esté arriba: `docker compose up -d`\n2. Ejecuta primero **POST /auth/login** (guarda el token automáticamente en la variable `token`)\n3. Las carpetas se ejecutan de arriba hacia abajo\n4. El flujo Admin es secuencial: crear → editar → borrar (no toca los datos seed)\n5. **POST /auth/logout** invalida el token — vuelve a ejecutar Login después\n6. El asistente usa modo mock (`ASSISTANT_MOCK=true`) — `POST /chat` responde con streaming SSE\n\nGateway: `http://localhost:8000` (auth en `/api/auth/*`, catálogo en `/api/catalog/*`, asistente en `/api/assistant/*`).",
+    "description": "Colección completa de EventCore — 57 endpoints (12 auth + 9 lectura catálogo + 20 admin catálogo + 5 asistente IA + 11 booking).\n\n**Uso:**\n1. Asegúrate de que el stack esté arriba: `docker compose up -d`\n2. Ejecuta primero **POST /auth/login** (guarda el token automáticamente en la variable `token`)\n3. Las carpetas se ejecutan de arriba hacia abajo\n4. El flujo Admin es secuencial: crear → editar → borrar (no toca los datos seed)\n5. **POST /auth/logout** invalida el token — vuelve a ejecutar Login después\n6. El asistente usa modo mock (`ASSISTANT_MOCK=true`) — `POST /chat` responde con streaming SSE\n7. Booking: `POST /reservations` bloquea asientos 10 min; el flujo confirm → qr → verify → cancel libera al final (los asientos A1/A2 quedan libres para repetir)\n\nGateway: `http://localhost:8000` (auth `/api/auth/*`, catálogo `/api/catalog/*`, asistente `/api/assistant/*`, booking `/api/booking/*`).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -17,7 +17,9 @@
     { "key": "new_showtime_id", "value": "" },
     { "key": "new_ticket_type_id", "value": "" },
     { "key": "new_seat_id", "value": "" },
-    { "key": "conversation_id", "value": "" }
+    { "key": "conversation_id", "value": "" },
+    { "key": "reservation_code", "value": "" },
+    { "key": "qr_payload", "value": "" }
   ],
   "item": [
     {
@@ -832,6 +834,293 @@
             "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
             "url": { "raw": "{{base_url}}/api/assistant/conversations/{{conversation_id}}", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations", "{{conversation_id}}"] },
             "description": "Borra la conversación capturada."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎫 Booking (11)",
+      "description": "Reservas de boletos vía booking-service (`/api/booking/*`): disponibilidad en tiempo real (PostgreSQL + locks Redis de 10 min), reserva → confirmación → QR firmado → tracking → cancelación. Ejecuta Login primero. El flujo es secuencial y al final libera los asientos A1/A2 para poder repetir. Si los asientos están ocupados, cámbialos en el body de POST /reservations (formato Fila+Número, p. ej. B3).",
+      "item": [
+        {
+          "name": "GET /booking/health (público)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/booking/health", "host": ["{{base_url}}"], "path": ["api", "booking", "health"] },
+            "description": "Liveness del booking — sin token. Devuelve también `seat_lock_ttl_seconds` (600)."
+          }
+        },
+        {
+          "name": "GET /booking/showtimes/{id}/seats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Disponibilidad con seat_map', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('showtime');",
+                  "    pm.expect(data).to.have.property('seat_map');",
+                  "    pm.expect(data.seat_map.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/showtimes/{{showtime_id}}/seats", "host": ["{{base_url}}"], "path": ["api", "booking", "showtimes", "{{showtime_id}}", "seats"] },
+            "description": "Mapa de asientos unificado: `seat_map[]` (cada asiento con `seat_code`, `booking_status`: available/locked/sold) + `confirmed_seats`, `locked_seats` (Redis) y `lock_ttl_seconds`."
+          }
+        },
+        {
+          "name": "POST /booking/reservations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reserva pending creada + captura booking_code', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.status).to.eql('pending');",
+                  "    pm.collectionVariables.set('reservation_code', data.booking_code);",
+                  "    pm.expect(data.remaining_lock_seconds).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtime_id\": {{showtime_id}},\n  \"seats\": [\"A1\", \"A2\"],\n  \"movie_title\": \"Abyssal - Terror submarino\",\n  \"cinema_name\": \"Cine Multicentro Quito\",\n  \"auditorium_name\": \"Sala 1 - 2D\",\n  \"showtime_start\": \"2026-11-01T19:30:00Z\",\n  \"unit_price\": 15.20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/booking/reservations", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations"] },
+            "description": "Crea la reserva y bloquea los asientos en Redis por 10 min (status `pending`). `seats` (1-15, formato `A1`) debe estar disponible. Guarda `data.booking_code` en `reservation_code`."
+          }
+        },
+        {
+          "name": "GET /booking/reservations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista paginada de reservas', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('reservations');",
+                  "    pm.expect(data).to.have.property('pagination');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations?status=pending", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations"], "query": [{ "key": "status", "value": "pending", "description": "pending | confirmed | cancelled | expired" }] },
+            "description": "Reservas del usuario autenticado. Filtros: `status`, `showtime_id`, `page`, `per_page`."
+          }
+        },
+        {
+          "name": "GET /booking/reservations/{code}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Detalle de la reserva', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.booking_code).to.eql(pm.collectionVariables.get('reservation_code'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}"] },
+            "description": "Detalle con `seats`, `tickets`, `trackings[]` y tiempos (`expires_at`, `remaining_lock_seconds`)."
+          }
+        },
+        {
+          "name": "POST /booking/reservations/{code}/confirm",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reserva confirmada + QR generado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.status).to.eql('confirmed');",
+                  "    pm.expect(data.qr_svg).to.not.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_method\": \"card\",\n  \"card_holder\": \"Super Admin\",\n  \"card_last_four\": \"4242\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}/confirm", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}", "confirm"] },
+            "description": "Confirma el pago, asigna los asientos definitivamente y genera el QR firmado. Todos los campos del body son opcionales. 409 si ya está confirmada."
+          }
+        },
+        {
+          "name": "GET /booking/reservations/{code}/qr",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('QR obtenido + captura payload', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.qr_svg).to.not.be.null;",
+                  "    pm.collectionVariables.set('qr_payload', data.qr_payload_raw);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}/qr", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}", "qr"] },
+            "description": "QR en SVG + payload firmado. Solo para reservas `confirmed` (409 si no). Guarda `data.qr_payload_raw` en `qr_payload`."
+          }
+        },
+        {
+          "name": "POST /booking/qr/verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('QR verificado válido', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.valid).to.be.true;",
+                  "    pm.expect(data.booking_code).to.eql(pm.collectionVariables.get('reservation_code'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qr_payload\": {{qr_payload}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/booking/qr/verify", "host": ["{{base_url}}"], "path": ["api", "booking", "qr", "verify"] },
+            "description": "Verifica la firma y estado del QR (lo usa el escáner/organizador). Requiere haber ejecutado GET /qr antes (captura `qr_payload`). 422 si la firma no es válida."
+          }
+        },
+        {
+          "name": "GET /booking/reservations/{code}/tracking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Tracking con eventos', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('trackings');",
+                  "    pm.expect(data.trackings.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}/tracking", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}", "tracking"] },
+            "description": "Historial de eventos: `seats_locked_redis` → `payment_confirmed` → `qr_generated` → `notification_sent` → `reservation_cancelled`."
+          }
+        },
+        {
+          "name": "GET /booking/admin/reservations (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Panel admin de reservas', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('reservations');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/admin/reservations?status=confirmed", "host": ["{{base_url}}"], "path": ["api", "booking", "admin", "reservations"], "query": [{ "key": "status", "value": "confirmed" }] },
+            "description": "Dashboard de organizador/admin (rol `admin` u `organizer`). Mismos filtros que la lista del usuario."
+          }
+        },
+        {
+          "name": "POST /booking/reservations/{code}/cancel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reserva cancelada y asientos liberados', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.status).to.eql('cancelled');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}/cancel", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}", "cancel"] },
+            "description": "Último paso del flujo: cancela la reserva y libera los asientos (A1/A2 quedan disponibles para repetir la carpeta). 409 si ya estaba cancelada/expirada."
           }
         }
       ]

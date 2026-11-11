@@ -14,6 +14,7 @@ show_help() {
   echo "  auth      -> auth-service"
   echo "  catalog   -> catalog-service"
   echo "  assistant -> assistant-service"
+  echo "  booking   -> booking-service"
   echo "  front     -> frontend"
   echo ""
   echo "Common examples:"
@@ -40,6 +41,9 @@ case "$SERVICE" in
     ;;
   assistant)
     CONTAINER="assistant-service"
+    ;;
+  booking)
+    CONTAINER="booking-service"
     ;;
   front)
     CONTAINER="frontend"

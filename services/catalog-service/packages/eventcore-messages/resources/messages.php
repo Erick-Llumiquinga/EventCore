@@ -47,6 +47,8 @@ return [
     'catalog.cinema.update' => 'Cine actualizado correctamente',
     'catalog.cinema.delete' => 'Cine eliminado correctamente',
     'catalog.cinema.delete_blocked' => 'No se puede eliminar: el cine tiene salas o funciones asociadas',
+    'catalog.cinema.movies_sync' => 'Cartelera del cine actualizada correctamente',
+    'catalog.cinema.movies_detach' => 'Película retirada de la cartelera del cine',
 
     // ------------------------------------------------------------------
     // Catálogo: películas

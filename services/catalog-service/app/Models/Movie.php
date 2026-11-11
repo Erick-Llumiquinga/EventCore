@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -51,5 +52,13 @@ class Movie extends Model
     public function showtimes(): HasMany
     {
         return $this->hasMany(Showtime::class);
+    }
+
+    /**
+     * Cinemas whose billboard includes this movie.
+     */
+    public function cinemas(): BelongsToMany
+    {
+        return $this->belongsToMany(Cinema::class, 'movie_cinema')->withTimestamps();
     }
 }
