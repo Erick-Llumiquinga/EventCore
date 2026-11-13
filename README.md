@@ -11,8 +11,10 @@ Plataforma escalable de gestión y reserva de eventos construida bajo una arquit
 * **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS (`http://localhost:5173`)
 * **Auth Service**: Laravel 13 (PHP 8.4) + JWT Auth (`http://localhost:8001`)
 * **Catalog Service**: Laravel 13 (PHP 8.4) + PostgreSQL `catalog_db` (`http://localhost:8002`)
-* **Base de Datos**: PostgreSQL 16 (`localhost:5432` / `auth_db`, `catalog_db`)
-* **Caché y Locks**: Redis 7 (`localhost:6379`)
+* **Booking Service**: Laravel 13 (PHP 8.4) + PostgreSQL `booking_db` — reservas de asientos con **locks en Redis** (10 min), códigos `EC-XXXXXX`, **QR firmado (HMAC-SHA256)** y tracking de estados
+* **Assistant Service**: Laravel 13 (PHP 8.4) + **DeepSeek IA** (asistente virtual en español, responde en JSON único vía `/api/assistant/chat`)
+* **Base de Datos**: PostgreSQL 16 (`localhost:5432` / `auth_db`, `catalog_db`, `assistant_db`, `booking_db`)
+* **Caché, Locks y Blacklist JWT**: Redis 7 (`localhost:6379`)
 
 ---
 
@@ -38,11 +40,20 @@ cd EventCore
 Copia los archivos de ejemplo en cada servicio:
 
 ```bash
-# Entorno raíz (Docker, Postgres, Redis)
+# Entorno raíz (Docker, Postgres, Redis, IA)
 cp .env.example .env
 
 # Entorno de Auth Service
 cp services/auth-service/.env.example services/auth-service/.env
+
+# Entorno de Catalog Service
+cp services/catalog-service/.env.example services/catalog-service/.env
+
+# Entorno de Booking Service
+cp services/booking-service/.env.example services/booking-service/.env
+
+# Entorno del Asistente IA
+cp services/assistant-service/.env.example services/assistant-service/.env
 
 # Entorno de Frontend
 cp frontend/.env.example frontend/.env
@@ -181,7 +192,7 @@ Los mensajes de las respuestas de `catalog-service` viven en un **paquete compos
 
 ### 🎬 Dominio de cines
 
-El catálogo modela una cadena de cines con jerarquía estricta: `cinemas` → `movies` (película/función a nivel cine, con precio) → `auditoriums` (salas donde se proyecta simultáneamente; un estreno puede jugar en varias salas a la vez). **Todos** los endpoints viven anidados bajo esa cadena; no existen rutas sueltas. La venta de boletos (stock/reservas) será responsabilidad de `booking-service`.
+El catálogo modela una cadena de cines con jerarquía estricta: `cinemas` → `movies` (película/función a nivel cine, con precio) → `auditoriums` (salas donde se proyecta simultáneamente; un estreno puede jugar en varias salas a la vez). **Todos** los endpoints viven anidados bajo esa cadena; no existen rutas sueltas. La venta de boletos (stock/reservas) la gestiona `booking-service` (ver más abajo).
 
 ### 📄 Paginación
 
@@ -212,13 +223,145 @@ Cada nivel valida la cadena (la película debe pertenecer al cine, el auditorio 
 
 ---
 
+## 🎟️ Configuración Inicial de `booking-service`
+
+Servicio de venta de boletos: reserva de asientos con **locks atómicos en Redis** (TTL 10 min), ciclo de vida `pending → confirmed | cancelled | expired`, códigos de reserva `EC-XXXXXX`, **QR firmado con HMAC-SHA256**, tracking de eventos y email de confirmación (mailer `log` por defecto).
+
+> **IMPORTANTE**: igual que `catalog-service` y `assistant-service`, verifica los tokens de `auth-service`, así que su `JWT_SECRET` **debe ser idéntico** al de `services/auth-service/.env` (nunca ejecutes `jwt:secret`; copia el valor).
+
+```bash
+# 1. Entorno del servicio (si no existe)
+cp services/booking-service/.env.example services/booking-service/.env
+
+# 2. Copiar APP_KEY y JWT_SECRET desde services/auth-service/.env
+
+# 3. Generar tablas (la base booking_db la crea el init de Postgres en el primer arranque)
+./eventcore.sh artisan booking key:generate
+./eventcore.sh artisan booking config:clear
+./eventcore.sh artisan booking migrate
+
+# 4. (Opcional) Datos de ejemplo: reserva confirmada EC-784523 (con QR)
+#    y reserva pendiente EC-AB12CD con asientos A1/A2 bloqueados en Redis
+./eventcore.sh artisan booking migrate --seed
+```
+
+### 🔄 Flujo de una reserva
+
+```
+POST /api/booking/reservations (JWT)
+  → valida showtime y asientos contra catalog-service
+  → crea reserva `pending` + bloquea asientos en Redis (10 min)
+POST /api/booking/reservations/{code}/confirm  (dentro de la ventana del lock)
+  → "pago" simulado, fija asientos en Postgres, genera QR firmado y libera los locks
+GET  /api/booking/reservations/{code}/qr
+  → payload + SVG del QR (verificable con POST /api/booking/qr/verify)
+```
+
+Si el lock expira, la reserva pasa a `expired` (expiración perezosa al leer). `cancel` libera los locks inmediatamente. El mapa de asientos (`GET .../showtimes/{id}/seats`) fusiona en tiempo real: asientos físicos del catálogo + confirmados en Postgres + bloqueados en Redis.
+
+### 📚 Endpoints de `booking-service`
+
+Externos (vía gateway `http://localhost:8000`):
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/booking/health` | pública | Liveness + `seat_lock_ttl_seconds` |
+| GET | `/api/booking/showtimes/{id}/seats` | JWT | Mapa unificado de asientos (catálogo + PG + locks Redis) |
+| GET | `/api/booking/reservations` | JWT | Reservas propias paginadas (filtros `status`, `showtime_id`) |
+| POST | `/api/booking/reservations` | JWT | Crea reserva `pending` y bloquea asientos 10 min en Redis |
+| GET | `/api/booking/reservations/{code}` | JWT | Detalle por `EC-XXXXXX` o id (owner / admin / organizer) |
+| POST | `/api/booking/reservations/{code}/confirm` | JWT | Confirma el pago, fija asientos y genera QR firmado |
+| POST | `/api/booking/reservations/{code}/cancel` | JWT | Cancela y libera los locks Redis |
+| GET | `/api/booking/reservations/{code}/qr` | JWT | QR (payload + SVG + data-URI) |
+| GET | `/api/booking/reservations/{code}/tracking` | JWT | Eventos de tracking + cuenta regresiva del lock |
+| POST | `/api/booking/qr/verify` | JWT | Verifica firma HMAC y estado del QR |
+| GET | `/api/booking/admin/reservations` | JWT + admin/organizer | Todas las reservas + métricas (conteos y revenue) |
+
+Respuestas JSON estándar `{code, message, data}`. Conflictos de asiento/estado → `409`; reservas ajenas → `403`.
+
+---
+
+## 🤖 Configuración Inicial de `assistant-service`
+
+Asistente virtual IA que responde preguntas en lenguaje natural (películas en cartelera, horarios, disponibilidad, estado de asientos) consultando `catalog-service` mediante **function calling** y devolviendo la respuesta completa en **un solo JSON**.
+
+> **IMPORTANTE**: igual que `catalog-service`, verifica los tokens de `auth-service`, así que su `JWT_SECRET` **debe ser idéntico** al de `services/auth-service/.env` (nunca ejecutes `jwt:secret`; copia el valor).
+
+```bash
+# 1. Entorno del servicio (si no existe)
+cp services/assistant-service/.env.example services/assistant-service/.env
+
+# 2. Copiar APP_KEY y JWT_SECRET desde services/auth-service/.env
+
+# 3. La base assistant_db la crea el init de Postgres en el primer arranque
+#    (solo ejecuta esto si el volumen de Postgres ya existía antes de agregar assistant_db):
+#    docker compose exec postgres psql -U postgres -c "CREATE DATABASE assistant_db;"
+
+# 4. Generar tablas de conversaciones y mensajes
+./eventcore.sh artisan assistant key:generate
+./eventcore.sh artisan assistant config:clear
+./eventcore.sh artisan assistant migrate
+```
+
+### 🧠 Modos de IA
+
+La IA se configura en la **raíz** (`.env` raíz) y se inyecta al contenedor:
+
+* `ASSISTANT_MOCK=true` (**default**): sin API key. Un `MockIntentResolver` local interpreta la intención, ejecuta la misma herramienta de catálogo y redacta una respuesta en español. Ideal para desarrollo y demos.
+* `ASSISTANT_MOCK=false` + `DEEPSEEK_API_KEY=<clave>`: modo real con DeepSeek (`deepseek-flash` = V4.1-Flash) y hasta 5 iteraciones de tool calling por turno.
+
+El health reporta el modo activo: `{"service":"assistant-service","database":"ok","ai":"mock"|"deepseek"}`.
+
+> ⚠️ `php artisan serve` solo reenvía un whitelist de variables al proceso HTTP; por eso el `CMD` del `Dockerfile` usa `artisan serve --host=0.0.0.0 --port=8000 --no-reload` (si no, `DEEPSEEK_API_KEY`/`CATALOG_SERVICE_URL` no llegan).
+
+### 📚 Endpoints de `assistant-service`
+
+Externos (vía gateway `http://localhost:8000`):
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/assistant/health` | pública | Liveness + estado de DB e IA |
+| POST | `/api/assistant/conversations` | JWT | Crear conversación (devuelve su `id`) |
+| POST | `/api/assistant/chat` | JWT | Chat IA en JSON único (20 req/min). Body: `{message, conversation_id}` |
+| GET | `/api/assistant/conversations` | JWT | Conversaciones propias paginadas |
+| GET | `/api/assistant/conversations/{id}` | JWT | Conversación con historial de mensajes |
+| DELETE | `/api/assistant/conversations/{id}` | JWT | Eliminar conversación (own-only) |
+
+El chat **no crea** conversaciones: primero llama a `POST /api/assistant/conversations` (body opcional `{title}`) y luego envía su `conversation_id` en cada mensaje. Si falta el `conversation_id` → `422`; si no existe o es ajena → `404`. Si la conversación está vacía y conserva el título por defecto, el primer mensaje la renombra con un extracto del texto.
+
+### 💬 Respuesta de `POST /api/assistant/chat`
+
+Request: `{ "message": "¿Qué hay en cartelera?", "conversation_id": "uuid" }`
+
+```json
+{
+  "code": 200,
+  "message": "...",
+  "data": {
+    "conversation_id": "…",
+    "message_id": 2,
+    "mode": "mock",
+    "usage": [],
+    "content": "Encontré 3 película(s)…",
+    "tools": [{"name": "list_movies", "arguments": {}, "ok": true, "error": null}]
+  }
+}
+```
+
+Herramientas disponibles (solo lectura contra `catalog-service`): `list_movies`, `get_movie`, `list_showtimes` (requiere al menos `date`, `cinema_id` o `movie_id`), `get_showtime`, `get_showtime_seats`, `list_cinemas`.
+
+Todas las respuestas (incluido el chat) siguen el contrato estándar `{code, message, data}`.
+
+---
+
 ## 🛠️ Uso del Helper CLI (`eventcore.sh`)
 
-Para evitar tener que escribir comandos largos de `docker compose exec ...`, utiliza `./eventcore.sh` desde la raíz:
+Para evitar tener que escribir comandos largos de `docker compose exec ...`, utiliza `./eventcore.sh` desde la raíz. Alias disponibles: `auth`, `catalog`, `assistant`, `booking`, `front`.
 
 ### Comandos de Artisan (Laravel):
 ```bash
 ./eventcore.sh artisan auth migrate
+./eventcore.sh artisan booking migrate
 ./eventcore.sh artisan auth make:controller MiControlador
 ./eventcore.sh artisan auth route:list
 ```
@@ -245,41 +388,41 @@ Para evitar tener que escribir comandos largos de `docker compose exec ...`, uti
 
 ## 📦 Guía: Cómo agregar un Nuevo Microservicio
 
-Cuando el equipo esté listo para crear el siguiente microservicio (ej. `catalog-service` o `booking-service`), sigan estos pasos:
+Cuando el equipo esté listo para crear el siguiente microservicio, sigan estos pasos:
 
 ### 1. Crear el nuevo proyecto Laravel
 Crea la carpeta dentro de `services/`:
 ```bash
-# Ejemplo: services/catalog-service
+# Ejemplo: services/pagos-service
 ```
 
 ### 2. Copiar el `Dockerfile` y `.dockerignore`
-Copia el archivo `services/auth-service/Dockerfile` y `.dockerignore` a la nueva carpeta `services/<servicio>/`. El build usa el contexto de la carpeta del servicio (`context: ./services/<servicio>`), igual que `auth-service` y `catalog-service`.
+Copia el archivo `services/auth-service/Dockerfile` y `.dockerignore` a la nueva carpeta `services/<servicio>/`. El build usa el contexto de la carpeta del servicio (`context: ./services/<servicio>`), igual que los demás servicios.
 
 ### 3. Registrar la nueva Base de Datos
 En `.env` raíz, añade el nombre de la nueva base de datos a `POSTGRES_MULTIPLE_DATABASES`:
 ```env
-POSTGRES_MULTIPLE_DATABASES=auth_db,catalog_db
+POSTGRES_MULTIPLE_DATABASES=auth_db,catalog_db,assistant_db,booking_db,pagos_db
 ```
 
 ### 4. Registrar el servicio en `docker-compose.yml`
 Agrega el bloque correspondiente en la sección de microservicios:
 
 ```yaml
-  catalog-service:
+  pagos-service:
     build:
-      context: ./services/catalog-service
+      context: ./services/pagos-service
       dockerfile: Dockerfile
-    container_name: catalog-service
+    container_name: pagos-service
     restart: unless-stopped
     volumes:
-      - ./services/catalog-service:/var/www/html
+      - ./services/pagos-service:/var/www/html
       - /var/www/html/vendor
     environment:
       DB_CONNECTION: pgsql
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_DATABASE: catalog_db
+      DB_DATABASE: pagos_db
       DB_USERNAME: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
       REDIS_HOST: redis
@@ -296,8 +439,9 @@ Agrega el bloque correspondiente en la sección de microservicios:
 Abre `docker/gateway/default.conf` y agrega la regla de enrutamiento:
 
 ```nginx
-    location /api/events {
-        proxy_pass http://catalog-service:8000;
+    # /api/pagos/xxx -> http://pagos-service:8000/api/xxx  (se descarta el prefijo)
+    location /api/pagos/ {
+        proxy_pass http://pagos-service:8000/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -314,12 +458,12 @@ docker compose restart api-gateway
 Abre `eventcore.sh` y añade el mapeo dentro del bloque `case "$SERVICE" in`:
 
 ```bash
-  catalog)
-    CONTAINER="catalog-service"
+  pagos)
+    CONTAINER="pagos-service"
     ;;
 ```
 
 ### 7. Levantar el nuevo servicio
 ```bash
-docker compose up -d --build catalog-service
+docker compose up -d --build pagos-service
 ```

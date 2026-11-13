@@ -36,3 +36,4 @@ services/*/public/hot/
 
 # Docker volumes / local data
 docker/data/
+AGENTS.md
