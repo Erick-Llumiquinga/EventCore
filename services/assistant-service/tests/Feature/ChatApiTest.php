@@ -31,8 +31,13 @@ class ChatApiTest extends TestCase
     {
         config(['assistant.mock' => false, 'services.deepseek.api_key' => null]);
 
+        $conversation = Conversation::factory()->create(['user_id' => 1]);
+
         $this->withToken($this->makeToken())
-            ->postJson('/api/chat', ['message' => 'hola'])
+            ->postJson('/api/chat', [
+                'message' => 'hola',
+                'conversation_id' => $conversation->id,
+            ])
             ->assertStatus(503)
             ->assertJsonPath('code', 500)
             ->assertJsonPath('message', 'Asistente IA no configurado: define DEEPSEEK_API_KEY o activa ASSISTANT_MOCK=true');
@@ -40,11 +45,33 @@ class ChatApiTest extends TestCase
 
     public function test_chat_validates_the_message_field(): void
     {
+        $conversation = Conversation::factory()->create(['user_id' => 1]);
+
         $this->withToken($this->makeToken())
-            ->postJson('/api/chat', [])
+            ->postJson('/api/chat', ['conversation_id' => $conversation->id])
             ->assertStatus(422)
             ->assertJsonPath('code', 500)
             ->assertJsonStructure(['code', 'message', 'data', 'errors']);
+    }
+
+    public function test_chat_requires_a_conversation_id(): void
+    {
+        $this->withToken($this->makeToken())
+            ->postJson('/api/chat', ['message' => 'hola'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 500)
+            ->assertJsonPath('errors.conversation_id.0', 'Debes indicar el conversation_id');
+
+        $this->assertDatabaseCount('conversations', 0);
+    }
+
+    public function test_chat_rejects_a_malformed_conversation_id(): void
+    {
+        $this->withToken($this->makeToken())
+            ->postJson('/api/chat', ['message' => 'hola', 'conversation_id' => 'no-es-uuid'])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 500)
+            ->assertJsonPath('errors.conversation_id.0', 'El identificador de conversación no es un UUID válido');
     }
 
     public function test_mock_chat_returns_json_and_persists_conversation(): void
@@ -53,8 +80,16 @@ class ChatApiTest extends TestCase
             '*' => Http::response($this->moviesPayload()),
         ]);
 
+        $conversation = Conversation::factory()->create([
+            'user_id' => 1,
+            'title' => 'Nueva conversación',
+        ]);
+
         $response = $this->withToken($this->makeToken())
-            ->postJson('/api/chat', ['message' => '¿Qué películas hay en cartelera?']);
+            ->postJson('/api/chat', [
+                'message' => '¿Qué películas hay en cartelera?',
+                'conversation_id' => $conversation->id,
+            ]);
 
         $response->assertOk()
             ->assertJsonPath('code', 200)
@@ -66,8 +101,7 @@ class ChatApiTest extends TestCase
         $this->assertSame('list_movies', $data['tools'][0]['name']);
         $this->assertTrue($data['tools'][0]['ok']);
 
-        $conversation = Conversation::first();
-        $this->assertNotNull($conversation);
+        $conversation->refresh();
         $this->assertSame($data['conversation_id'], $conversation->id);
         $this->assertSame('¿Qué películas hay en cartelera?', $conversation->title);
 
@@ -83,7 +117,7 @@ class ChatApiTest extends TestCase
         $this->assertSame($assistant->id, $data['message_id']);
     }
 
-    public function test_mock_chat_reuses_an_existing_session(): void
+    public function test_mock_chat_reuses_an_existing_conversation(): void
     {
         Http::fake(['*' => Http::response($this->moviesPayload())]);
 
@@ -92,7 +126,7 @@ class ChatApiTest extends TestCase
         $response = $this->withToken($this->makeToken())
             ->postJson('/api/chat', [
                 'message' => 'y los horarios?',
-                'session_id' => $conversation->id,
+                'conversation_id' => $conversation->id,
             ]);
 
         $response->assertOk()
@@ -102,6 +136,61 @@ class ChatApiTest extends TestCase
         $this->assertSame(1, Conversation::count());
         $this->assertDatabaseCount('messages', 2);
         $this->assertSame('Sesión previa', Conversation::first()->title);
+    }
+
+    public function test_mock_chat_greets_without_calling_the_catalog(): void
+    {
+        Http::fake();
+
+        $conversation = Conversation::factory()->create([
+            'user_id' => 1,
+            'title' => 'Nueva conversación',
+        ]);
+
+        $response = $this->withToken($this->makeToken())
+            ->postJson('/api/chat', [
+                'message' => 'hola',
+                'conversation_id' => $conversation->id,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('code', 200)
+            ->assertJsonPath('data.mode', 'mock')
+            ->assertJsonPath('data.tools', []);
+
+        $this->assertStringContainsString('¡Hola!', $response->json('data.content'));
+        $this->assertStringContainsString('asistente de EventCore', $response->json('data.content'));
+
+        Http::assertNothingSent();
+
+        $this->assertDatabaseCount('messages', 2);
+        $this->assertDatabaseHas('messages', ['role' => 'user', 'content' => 'hola']);
+        $this->assertDatabaseHas('messages', ['role' => 'assistant']);
+    }
+
+    public function test_mock_chat_greets_returning_users_differently(): void
+    {
+        Http::fake();
+
+        $conversation = Conversation::factory()->create(['user_id' => 1, 'title' => 'Nueva conversación']);
+        $conversation->messages()->create(['role' => 'user', 'content' => 'hola']);
+        $conversation->messages()->create(['role' => 'assistant', 'content' => '¡Hola! ¿En qué te ayudo?']);
+
+        $response = $this->withToken($this->makeToken())
+            ->postJson('/api/chat', [
+                'message' => 'hola',
+                'conversation_id' => $conversation->id,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.tools', []);
+
+        $this->assertStringContainsString('de nuevo', $response->json('data.content'));
+
+        Http::assertNothingSent();
+
+        $conversation->refresh();
+        $this->assertSame('Nueva conversación', $conversation->title);
     }
 
     public function test_mock_chat_defaults_showtime_queries_to_today(): void
@@ -115,8 +204,13 @@ class ChatApiTest extends TestCase
             '*' => Http::response($this->moviesPayload()),
         ]);
 
+        $conversation = Conversation::factory()->create(['user_id' => 1]);
+
         $response = $this->withToken($this->makeToken())
-            ->postJson('/api/chat', ['message' => '¿Qué horarios tienen las películas?']);
+            ->postJson('/api/chat', [
+                'message' => '¿Qué horarios tienen las películas?',
+                'conversation_id' => $conversation->id,
+            ]);
 
         $response->assertOk();
 
@@ -127,14 +221,91 @@ class ChatApiTest extends TestCase
         $this->assertSame(now()->toDateString(), $tool['arguments']['date']);
     }
 
-    public function test_chat_rejects_a_session_that_belongs_to_another_user(): void
+    public function test_mock_chat_details_a_movie_by_title(): void
+    {
+        $movieId = '11111111-1111-4111-8111-111111111111';
+
+        Http::fake([
+            '*/movies/'.$movieId => Http::response([
+                'code' => 200,
+                'message' => 'Película obtenida correctamente',
+                'data' => [
+                    'id' => $movieId,
+                    'title' => 'Abyssal - Terror submarino',
+                    'description' => 'Una estación de investigación en el fondo del océano.',
+                    'duration_minutes' => 110,
+                    'rating' => '+16',
+                    'status' => 'published',
+                    'showtimes' => [[
+                        'id' => 'showtime-1',
+                        'start_time' => '2026-11-12 19:00:00',
+                        'format' => '2D',
+                        'auditorium' => ['name' => 'Sala 1', 'cinema' => ['name' => 'Cine Center']],
+                    ]],
+                ],
+            ]),
+            '*' => Http::response([
+                'code' => 200,
+                'message' => 'Películas obtenidas correctamente',
+                'data' => [
+                    'movies' => [
+                        ['id' => $movieId, 'title' => 'Abyssal - Terror submarino', 'status' => 'published'],
+                        ['id' => '22222222-2222-4222-8222-222222222222', 'title' => 'Galaxias Perdidas', 'status' => 'published'],
+                    ],
+                    'pagination' => ['total' => 2, 'per_page' => 15, 'current_page' => 1, 'last_page' => 1],
+                ],
+            ]),
+        ]);
+
+        $conversation = Conversation::factory()->create(['user_id' => 1]);
+
+        $response = $this->withToken($this->makeToken())
+            ->postJson('/api/chat', [
+                'message' => 'me ayudas con mas informacion de Abyssal',
+                'conversation_id' => $conversation->id,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('code', 200)
+            ->assertJsonPath('data.mode', 'mock');
+
+        $data = $response->json('data');
+
+        $this->assertSame(['list_movies', 'get_movie'], array_column($data['tools'], 'name'));
+        $this->assertTrue($data['tools'][0]['ok']);
+        $this->assertTrue($data['tools'][1]['ok']);
+        $this->assertStringContainsString('🎬 Abyssal - Terror submarino', $data['content']);
+        $this->assertStringContainsString('Una estación de investigación', $data['content']);
+        $this->assertStringContainsString('Funciones:', $data['content']);
+        $this->assertStringContainsString('Cine Center', $data['content']);
+    }
+
+    public function test_mock_chat_reports_unknown_movie_details(): void
+    {
+        Http::fake(['*' => Http::response($this->moviesPayload())]);
+
+        $conversation = Conversation::factory()->create(['user_id' => 1]);
+
+        $response = $this->withToken($this->makeToken())
+            ->postJson('/api/chat', [
+                'message' => 'me ayudas con mas informacion de Godzilla',
+                'conversation_id' => $conversation->id,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('code', 200)
+            ->assertJsonPath('data.tools.0.name', 'list_movies')
+            ->assertJsonPath('data.content', 'No encontré esa película.');
+    }
+
+    public function test_chat_rejects_a_conversation_that_belongs_to_another_user(): void
     {
         $foreign = Conversation::factory()->create(['user_id' => 999]);
 
         $this->withToken($this->makeToken())
             ->postJson('/api/chat', [
                 'message' => 'hola',
-                'session_id' => $foreign->id,
+                'conversation_id' => $foreign->id,
             ])
             ->assertNotFound()
             ->assertJsonPath('code', 500)
@@ -155,8 +326,13 @@ class ChatApiTest extends TestCase
             '*' => Http::response($this->moviesPayload()),
         ]);
 
+        $conversation = Conversation::factory()->create(['user_id' => 1]);
+
         $response = $this->withToken($this->makeToken())
-            ->postJson('/api/chat', ['message' => '¿Qué películas están publicadas?']);
+            ->postJson('/api/chat', [
+                'message' => '¿Qué películas están publicadas?',
+                'conversation_id' => $conversation->id,
+            ]);
 
         $response->assertOk()
             ->assertJsonPath('code', 200)
@@ -189,8 +365,13 @@ class ChatApiTest extends TestCase
             '*' => Http::response(['code' => 500, 'message' => 'Base de datos no disponible', 'data' => null], 503),
         ]);
 
+        $conversation = Conversation::factory()->create(['user_id' => 1]);
+
         $response = $this->withToken($this->makeToken())
-            ->postJson('/api/chat', ['message' => '¿Qué películas están publicadas?']);
+            ->postJson('/api/chat', [
+                'message' => '¿Qué películas están publicadas?',
+                'conversation_id' => $conversation->id,
+            ]);
 
         $response->assertOk();
 

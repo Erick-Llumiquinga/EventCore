@@ -113,7 +113,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-secret}
       REDIS_HOST: redis
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
       ASSISTANT_MOCK: ${ASSISTANT_MOCK:-false}
       # catalog-service reached over the Docker network (host value in .env points to the gateway)
       CATALOG_SERVICE_URL: http://catalog-service:8000/api

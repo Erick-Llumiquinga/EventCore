@@ -16,6 +16,24 @@ class MockResponder
     ];
 
     /**
+     * Cheerful small-talk answers (greetings, farewells...) with no catalog
+     * data behind them. $returning is true when the conversation already has
+     * prior messages, so the greeting acknowledges the ongoing chat.
+     */
+    public function conversational(string $intent, bool $returning): string
+    {
+        return match ($intent) {
+            'how_are_you' => '¡Estoy de maravilla, listo para cine! 🍿 ¿Y tú, qué te apetece ver hoy?',
+            'identity' => '¡Soy tu asistente de EventCore! 🎬 Con gusto te ayudo con la cartelera, funciones, cines y precios. ¿Por dónde empezamos?',
+            'thanks' => '¡A ti por preguntar! 😄 ¿Te ayudo con algo más?',
+            'bye' => '¡Hasta luego! 👋 Que disfrutes tu película. Aquí estaré cuando quieras volver.',
+            default => $returning
+                ? '¡Hola de nuevo! 😊 ¿Seguimos viendo opciones? Puedo contarte funciones, precios o cines.'
+                : '¡Hola! 👋 Soy el asistente de EventCore 🎬 Con gusto te ayudo con la cartelera, horarios, cines y precios. ¿Qué te gustaría ver?',
+        };
+    }
+
+    /**
      * @param  list<array{name: string, arguments: array<string, mixed>}>  $plan
      * @param  list<array{name: string, data: array<mixed>|null, error: string|null}>  $results
      */
@@ -110,15 +128,25 @@ class MockResponder
         }
 
         $showtimes = $data['showtimes'] ?? [];
+        $lines = [$text];
 
-        if ($showtimes === []) {
-            return $text."\n\nPor el momento no tiene funciones programadas.";
+        if (! empty($data['description'])) {
+            $lines[] = '';
+            $lines[] = $data['description'];
         }
 
-        $lines = [$text, '', 'Funciones:'];
+        if ($showtimes === []) {
+            $lines[] = '';
+            $lines[] = 'Por el momento no tiene funciones programadas.';
+
+            return implode("\n", $lines);
+        }
+
+        $lines[] = '';
+        $lines[] = 'Funciones:';
 
         foreach ($showtimes as $showtime) {
-            $lines[] = '• '.$this->formatShowtime($showtime);
+            $lines[] = '• '.$this->formatShowtime($showtime, (string) $title);
         }
 
         return implode("\n", $lines);
@@ -152,13 +180,13 @@ class MockResponder
     /**
      * @param  array<mixed>  $showtime
      */
-    private function formatShowtime(array $showtime): string
+    private function formatShowtime(array $showtime, ?string $movieTitle = null): string
     {
         $start = isset($showtime['start_time'])
             ? Carbon::parse($showtime['start_time'])->format('d/m/Y H:i')
             : 'Fecha no definida';
 
-        $movie = $showtime['movie']['title'] ?? 'Película';
+        $movie = $showtime['movie']['title'] ?? $movieTitle ?? 'Película';
         $format = $showtime['format'] ?? '';
         $auditorium = $showtime['auditorium']['name'] ?? '';
         $cinema = $showtime['auditorium']['cinema']['name'] ?? '';

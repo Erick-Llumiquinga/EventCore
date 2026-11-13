@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "EventCore API",
-    "description": "Colección completa de EventCore — 57 endpoints (12 auth + 9 lectura catálogo + 20 admin catálogo + 5 asistente IA + 11 booking).\n\n**Uso:**\n1. Asegúrate de que el stack esté arriba: `docker compose up -d`\n2. Ejecuta primero **POST /auth/login** (guarda el token automáticamente en la variable `token`)\n3. Las carpetas se ejecutan de arriba hacia abajo\n4. El flujo Admin es secuencial: crear → editar → borrar (no toca los datos seed)\n5. **POST /auth/logout** invalida el token — vuelve a ejecutar Login después\n6. El asistente usa modo mock (`ASSISTANT_MOCK=true`) — `POST /chat` responde con streaming SSE\n7. Booking: `POST /reservations` bloquea asientos 10 min; el flujo confirm → qr → verify → cancel libera al final (los asientos A1/A2 quedan libres para repetir)\n\nGateway: `http://localhost:8000` (auth `/api/auth/*`, catálogo `/api/catalog/*`, asistente `/api/assistant/*`, booking `/api/booking/*`).",
+    "description": "Colección completa de EventCore — 56 endpoints (12 auth + 9 lectura catálogo + 18 admin catálogo + 6 asistente IA + 11 booking).\n\n**Uso:**\n1. Asegúrate de que el stack esté arriba: `docker compose up -d`\n2. Ejecuta primero **POST /auth/login** (guarda el token automáticamente en la variable `token`)\n3. Las carpetas se ejecutan de arriba hacia abajo\n4. El flujo Admin es secuencial: crear → editar → borrar (no toca los datos seed)\n5. **POST /auth/logout** está SIEMPRE al final de la colección (invalida el token para todos los servicios; si se ejecuta antes, el resto responde 401 — vuelve a correr Login)\n6. Asistente: primero **POST /conversations** (guarda `conversation_id`) y luego el chat con ese id — responde JSON en modo mock (`ASSISTANT_MOCK=true`)\n7. Booking: `POST /reservations` bloquea asientos 10 min; el flujo confirm → qr → verify → cancel libera al final (los asientos A1/A2 quedan libres para repetir)\n\nGateway: `http://localhost:8000` (auth `/api/auth/*`, catálogo `/api/catalog/*`, asistente `/api/assistant/*`, booking `/api/booking/*`).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -21,9 +21,20 @@
     { "key": "reservation_code", "value": "" },
     { "key": "qr_payload", "value": "" }
   ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.collectionVariables.set('timestamp', Date.now());"
+        ]
+      }
+    }
+  ],
   "item": [
     {
-      "name": "🔐 Auth (12)",
+      "name": "🔐 Auth (11)",
       "description": "Autenticación y gestión de usuarios. Ejecuta Login primero.",
       "item": [
         {
@@ -211,15 +222,6 @@
             "url": { "raw": "{{base_url}}/api/auth/roles", "host": ["{{base_url}}"], "path": ["api", "auth", "roles"] },
             "description": "Lista de roles del sistema."
           }
-        },
-        {
-          "name": "POST /auth/logout",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] },
-            "description": "⚠️ Invalida el token. Ejecútalo al FINAL — vuelve a correr Login después."
-          }
         }
       ]
     },
@@ -238,6 +240,22 @@
         },
         {
           "name": "GET /catalog/cinemas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Captura cinema_id', function () {",
+                  "    var data = pm.response.json();",
+                  "    if (data.data && data.data.cinemas && data.data.cinemas.length) {",
+                  "        pm.collectionVariables.set('cinema_id', String(data.data.cinemas[0].id));",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
@@ -372,7 +390,7 @@
       ]
     },
     {
-      "name": "🛠 Catálogo — Admin (20)",
+      "name": "🛠 Catálogo — Admin (18)",
       "description": "CRUD completo + cartelera. Cadena secuencial: cada POST captura su `new_*_id` para los siguientes pasos. Al final limpia todo lo creado (no toca datos seed).",
       "item": [
         {
@@ -664,32 +682,6 @@
           }
         },
         {
-          "name": "POST /cinemas/{id}/movies — sync cartelera (admin)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"movie_ids\": [\"{{new_movie_id}}\"]\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{new_cinema_id}}/movies", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{new_cinema_id}}", "movies"] },
-            "description": "Sincroniza la cartelera completa del cine con la lista dada (reemplaza la anterior). Relación M:N cine↔película."
-          }
-        },
-        {
-          "name": "DELETE /cinemas/{id}/movies/{movieId} — detach (admin)",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{new_cinema_id}}/movies/{{new_movie_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{new_cinema_id}}", "movies", "{{new_movie_id}}"] },
-            "description": "Retira una película de la cartelera sin borrarla."
-          }
-        },
-        {
           "name": "DELETE /ticket-types/{id} (admin)",
           "request": {
             "method": "DELETE",
@@ -746,8 +738,8 @@
       ]
     },
     {
-      "name": "🤖 Asistente (5)",
-      "description": "Asistente IA vía SSE (`/api/assistant/*`). Ejecuta Login primero. El chat corre en modo mock (`ASSISTANT_MOCK=true`) y emite los eventos `tool` / `delta` / `done` / `error`. Crea una conversación que luego se lista, se abre y se borra.",
+      "name": "🤖 Asistente (6)",
+      "description": "Asistente IA vía JSON (`/api/assistant/*`). Ejecuta Login primero. Flujo: crear conversación (POST) → enviar mensajes con `conversation_id` → listar/abrir/borrar. El chat corre en modo mock (`ASSISTANT_MOCK=true`) y responde JSON (ya no SSE).",
       "item": [
         {
           "name": "GET /assistant/health (público)",
@@ -758,17 +750,18 @@
           }
         },
         {
-          "name": "POST /assistant/chat (SSE)",
+          "name": "POST /assistant/conversations",
           "event": [
             {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('Chat SSE respondió 200 con eventos', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "    var body = pm.response.text();",
-                  "    pm.expect(body).to.include('event:');",
+                  "pm.test('Conversación creada (201) + captura conversation_id', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var conv = pm.response.json().data.conversation;",
+                  "    pm.expect(conv).to.have.property('id');",
+                  "    pm.collectionVariables.set('conversation_id', conv.id);",
                   "});"
                 ]
               }
@@ -778,16 +771,49 @@
             "method": "POST",
             "header": [
               { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Accept", "value": "text/event-stream" }
+              { "key": "Content-Type", "value": "application/json" }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"message\": \"¿Qué películas están en cartelera?\"\n}",
+              "raw": "{\n  \"title\": \"Consulta de cartelera\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/assistant/conversations", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations"] },
+            "description": "Crea la conversación (paso obligatorio antes del chat). `title` es opcional (máx 120, si se omite usa 'Nueva conversación'). Devuelve 201 y guarda el id en `conversation_id`."
+          }
+        },
+        {
+          "name": "POST /assistant/chat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Chat JSON 200 con contenido y conversation_id', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('content');",
+                  "    pm.expect(data.content.length).to.be.above(0);",
+                  "    pm.expect(data.conversation_id).to.eql(pm.collectionVariables.get('conversation_id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Qué películas están en cartelera?\",\n  \"conversation_id\": \"{{conversation_id}}\"\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{base_url}}/api/assistant/chat", "host": ["{{base_url}}"], "path": ["api", "assistant", "chat"] },
-            "description": "Chat en streaming SSE. `message` es obligatorio (máx 4000); `session_id` (uuid) es opcional para continuar una conversación. Throttle: 20 req/min. Eventos: `tool` (consulta al catálogo), `delta` (fragmento de respuesta), `done` (ids de conversación/mensaje) y `error`."
+            "description": "Envía un mensaje (JSON, ya no SSE). `message` (máx 4000) y `conversation_id` (uuid, obligatorio — debe existir y pertenecer al usuario). Throttle: 20 req/min. Responde `data: {conversation_id, message_id, mode, usage, content, tools}`; en la primera respuesta el título de la conversación se actualiza con el mensaje."
           }
         },
         {
@@ -885,7 +911,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Reserva pending creada + captura booking_code', function () {",
-                  "    pm.response.to.have.status(200);",
+                  "    pm.response.to.have.status(201);",
                   "    var data = pm.response.json().data;",
                   "    pm.expect(data.status).to.eql('pending');",
                   "    pm.collectionVariables.set('reservation_code', data.booking_code);",
@@ -1061,8 +1087,8 @@
                   "pm.test('Tracking con eventos', function () {",
                   "    pm.response.to.have.status(200);",
                   "    var data = pm.response.json().data;",
-                  "    pm.expect(data).to.have.property('trackings');",
-                  "    pm.expect(data.trackings.length).to.be.above(0);",
+                  "    pm.expect(data).to.have.property('events');",
+                  "    pm.expect(data.events.length).to.be.above(0);",
                   "});"
                 ]
               }
@@ -1124,6 +1150,15 @@
           }
         }
       ]
+    },
+    {
+      "name": "POST /auth/logout (siempre al final)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] },
+        "description": "⚠️ Invalida el token para TODOS los servicios. Va al final de la colección: si se ejecuta antes, el resto de requests responde 401. Después vuelve a correr Login."
+      }
     }
   ]
 }

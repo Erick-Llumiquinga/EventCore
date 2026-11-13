@@ -3,7 +3,7 @@
 Asistente virtual IA en español que responde preguntas en lenguaje natural sobre el catálogo de cines (películas en cartelera, horarios, disponibilidad, estado de asientos) usando **function calling** contra `catalog-service` y devolviendo la respuesta completa en **un solo JSON**.
 
 * **Stack**: Laravel 13 · PHP 8.4 · PostgreSQL `assistant_db` · Redis (cache/throttle)
-* **IA**: DeepSeek (`deepseek-chat`) con modo *mock* local para desarrollo sin API key
+* **IA**: DeepSeek (`deepseek-flash` = V4.1-Flash) con modo *mock* local para desarrollo sin API key
 * **API-only**: no incluye frontend; el chat responde JSON con la respuesta completa
 
 ---
@@ -11,14 +11,17 @@ Asistente virtual IA en español que responde preguntas en lenguaje natural sobr
 ## 🔄 Flujo de un mensaje
 
 ```
-POST /api/assistant/chat (JWT)
-  → valida entrada, crea/recupera Conversation
+POST /api/assistant/conversations (JWT) → crea la Conversation y devuelve su id
+POST /api/assistant/chat (JWT) {conversation_id, message}
+  → valida entrada y recupera la Conversation (404 si no existe o es ajena)
   → ToolCallLoop (hasta 5 iteraciones):
       mock  → MockIntentResolver + MockResponder (sin red externa al LLM)
       live  → DeepSeekClient (stream) → tool_call → CatalogClient → repite
   → persiste mensaje user + assistant en assistant_db
   → responde un JSON único con content + tools (o error 500)
 ```
+
+El chat **no crea** conversaciones: primero se llama a `POST /conversations` y luego se envía su `conversation_id` en cada mensaje. Si la conversación está vacía y conserva el título por defecto, el primer mensaje la renombra con un extracto del texto.
 
 Solo se permite **lectura** al catálogo: la whitelist de herramientas hace `GET` contra `catalog-service`.
 
@@ -32,15 +35,28 @@ Internos (contenedor `assistant-service:8000`). Externos se consumen **vía API 
 |---|---|---|---|---|
 | GET | `/api/assistant/health` | `/api/health` | pública | Liveness + estado DB e IA |
 | POST | `/api/assistant/chat` | `/api/chat` | JWT | Chat IA — JSON único (throttle 20/min) |
+| POST | `/api/assistant/conversations` | `/api/conversations` | JWT | Crear conversación (devuelve `id`) |
 | GET | `/api/assistant/conversations` | `/api/conversations` | JWT | Historial propio (paginado) |
 | GET | `/api/assistant/conversations/{id}` | `/api/conversations/{id}` | JWT | Conversación + mensajes |
 | DELETE | `/api/assistant/conversations/{id}` | `/api/conversations/{id}` | JWT | Eliminar conversación |
 
 El servicio **no publica puerto en el host**: todo el tráfico entra por `http://localhost:8000`.
 
+### Crear conversación (`POST /api/assistant/conversations`)
+
+Request: `{ "title": "Mi consulta" }` — `title` opcional (máx. 120); sin él se usa `"Nueva conversación"`.
+
+```json
+{
+  "code": 200,
+  "message": "Conversación creada correctamente",
+  "data": {"conversation": {"id": "…", "title": "Mi consulta", "created_at": "…", "updated_at": "…"}}
+}
+```
+
 ### Respuesta JSON (`POST /api/assistant/chat`)
 
-Request: `{ "message": "¿Qué hay en cartelera?", "session_id": "uuid?" }`
+Request: `{ "message": "¿Qué hay en cartelera?", "conversation_id": "uuid" }` — **`conversation_id` requerido** (si falta → 422).
 
 ```json
 {
@@ -96,10 +112,10 @@ Variables clave (la mayoría se inyectan desde el `.env` **raíz** vía `docker-
 |---|---|---|
 | `ASSISTANT_MOCK` | `true` (en `.env` raíz) | `true` = sin DeepSeek, reglas locales |
 | `DEEPSEEK_API_KEY` | vacío | Clave de https://platform.deepseek.com |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | Modelo a usar |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | Modelo a usar (V4.1-Flash) |
 | `DEEPSEEK_MAX_TOOL_ITERATIONS` | `5` | Máximo de rondas tool calling por turno |
 | `CATALOG_SERVICE_URL` | `http://catalog-service:8000/api` | Inyectado por compose (red interna) |
-| `ASSISTANT_HISTORY_LIMIT` | `20` | Mensajes de historial enviados al modelo |
+| `ASSISTANT_HISTORY_LIMIT` | `40` | Mensajes de historial enviados al modelo |
 
 ⚠️ El `CMD` del `Dockerfile` usa `artisan serve --no-reload`: sin esa bandera `php artisan serve` solo reenvía un *whitelist* de variables de entorno al proceso HTTP y `DEEPSEEK_API_KEY`/`CATALOG_SERVICE_URL`/`ASSISTANT_MOCK` no llegarían.
 
@@ -111,7 +127,7 @@ Modo real: `ASSISTANT_MOCK=false` + `DEEPSEEK_API_KEY` en el `.env` raíz y `doc
 
 ```bash
 # En el host (PHP 8.4 + Composer)
-php artisan test --compact      # 21 tests: chat, tools, auth, conversaciones
+php artisan test --compact      # 26 tests: chat, tools, auth, conversaciones
 vendor/bin/pint --dirty --format agent
 ```
 

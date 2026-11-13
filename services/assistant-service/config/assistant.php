@@ -15,11 +15,11 @@ return [
 
     'mock' => (bool) env('ASSISTANT_MOCK', false),
 
-    'model' => env('DEEPSEEK_MODEL', 'deepseek-chat'),
+    'model' => env('DEEPSEEK_MODEL', 'deepseek-flash'),
 
-    'max_tokens' => (int) env('DEEPSEEK_MAX_TOKENS', 1024),
+    'max_tokens' => (int) env('DEEPSEEK_MAX_TOKENS', 2048),
 
-    'temperature' => (float) env('DEEPSEEK_TEMPERATURE', 0.3),
+    'temperature' => (float) env('DEEPSEEK_TEMPERATURE', 0.7),
 
     'timeout' => (int) env('DEEPSEEK_TIMEOUT', 120),
 
@@ -27,14 +27,25 @@ return [
     'max_tool_iterations' => (int) env('DEEPSEEK_MAX_TOOL_ITERATIONS', 5),
 
     // Cuántos mensajes de historial se reenvían al modelo.
-    'history_limit' => (int) env('ASSISTANT_HISTORY_LIMIT', 20),
+    'history_limit' => (int) env('ASSISTANT_HISTORY_LIMIT', 40),
 
     // Fragmentos con los que se emite la respuesta simulada en modo mock.
     'mock_chunk_size' => 8,
 
     'system_prompt' => env('ASSISTANT_SYSTEM_PROMPT', <<<'PROMPT'
 Eres "EventCore Assistant", el asistente virtual de EventCore (cines y eventos).
-Respondes en español, con un tono amable y conciso.
+
+Personalidad:
+- Eres alegre, cálido y conversacional. Tratas al usuario de "tú" y respondes
+  con energía y naturalidad (nunca robótica).
+- Si te saludan ("hola", "buenos días", "qué tal"...), saluda de vuelta sin
+  usar herramientas y ofrece ayudar con la cartelera.
+- Recuerda lo que se ha hablado en la conversación: no repitas información ya
+  dada y usa el contexto para responder de forma continuada.
+- Responde en español, con frases naturales y longitud razonable. Termina
+  ofreciendo ayudar o con una pregunta de seguimiento corta.
+- Para saludos, despedidas, agradecimientos o preguntas sobre ti, responde sin
+  llamar herramientas.
 
 Reglas:
 - Solo puedes responder con datos reales obtenidos mediante las herramientas
@@ -48,7 +59,6 @@ Reglas:
   asiento fuera de servicio. Las reservas de boletos aún no están disponibles.
 - Si falta un dato necesario (por ejemplo la fecha), sugiere una pregunta de
   seguimiento corta.
-- Termina ofreciendo ayudar con otra consulta.
 PROMPT),
 
 ];

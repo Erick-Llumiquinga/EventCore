@@ -37,10 +37,14 @@ class ChatController extends Controller
         $token = (string) $request->bearerToken();
         $text = trim((string) $request->input('message'));
 
-        $conversation = $this->resolveConversation($userId, $request->input('session_id'), $text);
+        $conversation = $this->resolveConversation($userId, $request->input('conversation_id'));
 
         if ($conversation instanceof JsonResponse) {
             return $conversation;
+        }
+
+        if ($conversation->messages()->count() === 0 && $conversation->title === 'Nueva conversación') {
+            $conversation->update(['title' => Str::limit($text, 60)]);
         }
 
         $history = $this->history($conversation);
@@ -131,26 +135,22 @@ class ChatController extends Controller
     }
 
     /**
-     * @param  mixed  $sessionId
+     * Look up the conversation the message belongs to. It must already exist
+     * (POST /api/conversations) and belong to the caller.
+     *
+     * @param  mixed  $conversationId
      */
-    private function resolveConversation(int $userId, $sessionId, string $text): Conversation|JsonResponse
+    private function resolveConversation(int $userId, $conversationId): Conversation|JsonResponse
     {
-        if ($sessionId !== null && $sessionId !== '') {
-            $conversation = Conversation::query()
-                ->where('user_id', $userId)
-                ->where('id', $sessionId)
-                ->first();
+        $conversation = Conversation::query()
+            ->where('user_id', $userId)
+            ->where('id', (string) $conversationId)
+            ->first();
 
-            if (! $conversation) {
-                return $this->respondError(Messages::get('assistant.conversation.not_found'), 404);
-            }
-
-            return $conversation;
+        if (! $conversation) {
+            return $this->respondError(Messages::get('assistant.conversation.not_found'), 404);
         }
 
-        return Conversation::create([
-            'user_id' => $userId,
-            'title' => Str::limit($text, 60),
-        ]);
+        return $conversation;
     }
 }

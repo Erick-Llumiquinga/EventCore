@@ -17,6 +17,50 @@ class ConversationApiTest extends TestCase
         $this->getJson('/api/conversations')
             ->assertUnauthorized()
             ->assertJsonPath('code', 500);
+
+        $this->postJson('/api/conversations', [])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 500);
+    }
+
+    public function test_conversation_store_creates_with_default_title(): void
+    {
+        $this->withToken($this->makeToken())
+            ->postJson('/api/conversations', [])
+            ->assertStatus(201)
+            ->assertJsonPath('code', 200)
+            ->assertJsonPath('data.conversation.title', 'Nueva conversación')
+            ->assertJsonStructure(['code', 'message', 'data' => ['conversation' => [
+                'id', 'title', 'created_at', 'updated_at',
+            ]]]);
+
+        $this->assertDatabaseCount('conversations', 1);
+        $this->assertDatabaseHas('conversations', [
+            'user_id' => 1,
+            'title' => 'Nueva conversación',
+        ]);
+    }
+
+    public function test_conversation_store_accepts_a_custom_title(): void
+    {
+        $this->withToken($this->makeToken())
+            ->postJson('/api/conversations', ['title' => 'Mi consulta'])
+            ->assertStatus(201)
+            ->assertJsonPath('data.conversation.title', 'Mi consulta');
+
+        $this->assertDatabaseCount('conversations', 1);
+        $this->assertDatabaseHas('conversations', ['title' => 'Mi consulta']);
+    }
+
+    public function test_conversation_store_validates_title_length(): void
+    {
+        $this->withToken($this->makeToken())
+            ->postJson('/api/conversations', ['title' => str_repeat('a', 121)])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 500)
+            ->assertJsonStructure(['code', 'message', 'data', 'errors']);
+
+        $this->assertDatabaseCount('conversations', 0);
     }
 
     public function test_conversations_index_returns_only_the_caller_conversations(): void

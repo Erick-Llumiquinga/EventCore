@@ -102,7 +102,9 @@ return [
     'assistant.chat.failed' => 'No se pudo generar la respuesta del asistente',
     'assistant.message.invalid' => 'El mensaje es obligatorio',
     'assistant.conversations.list' => 'Conversaciones obtenidas correctamente',
+    'assistant.conversations.created' => 'Conversación creada correctamente',
     'assistant.conversation.show' => 'Conversación obtenida correctamente',
     'assistant.conversation.deleted' => 'Conversación eliminada correctamente',
     'assistant.conversation.not_found' => 'Conversación no encontrada',
+    'assistant.conversation.id_required' => 'Debes indicar el conversation_id',
 ];

@@ -22,7 +22,7 @@ class ChatRequest extends FormRequest
     {
         return [
             'message' => ['required', 'string', 'min:1', 'max:4000'],
-            'session_id' => ['nullable', 'uuid'],
+            'conversation_id' => ['required', 'uuid'],
         ];
     }
 
@@ -34,7 +34,8 @@ class ChatRequest extends FormRequest
         return [
             'message.required' => Messages::get('assistant.message.invalid'),
             'message.max' => 'El mensaje no puede superar los 4000 caracteres',
-            'session_id.uuid' => 'El identificador de sesión no es un UUID válido',
+            'conversation_id.required' => Messages::get('assistant.conversation.id_required'),
+            'conversation_id.uuid' => 'El identificador de conversación no es un UUID válido',
         ];
     }
 }

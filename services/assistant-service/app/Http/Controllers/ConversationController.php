@@ -14,6 +14,39 @@ class ConversationController extends Controller
     use ApiResponse;
 
     /**
+     * POST /api/conversations — create an empty conversation for the caller.
+     *
+     * Body: { title?: string (max 120) }. Without a title the conversation is
+     * created with the placeholder "Nueva conversación", which the first chat
+     * message replaces with an excerpt of the text.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $request->validate([
+            'title' => ['nullable', 'string', 'max:120'],
+        ], [
+            'title.max' => 'El título no puede superar los 120 caracteres',
+        ]);
+
+        $userId = (int) $request->attributes->get('auth_user_id');
+        $title = trim((string) $request->input('title', ''));
+
+        $record = Conversation::create([
+            'user_id' => $userId,
+            'title' => $title !== '' ? $title : 'Nueva conversación',
+        ]);
+
+        return $this->respondSuccess([
+            'conversation' => [
+                'id' => $record->id,
+                'title' => $record->title,
+                'created_at' => $record->created_at?->toIso8601String(),
+                'updated_at' => $record->updated_at?->toIso8601String(),
+            ],
+        ], Messages::get('assistant.conversations.created'), 201);
+    }
+
+    /**
      * GET /api/conversations — paginated list of the caller's conversations.
      */
     public function index(Request $request): JsonResponse

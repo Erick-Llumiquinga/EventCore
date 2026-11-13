@@ -116,10 +116,32 @@ class ToolCallLoop
         $question = $this->lastUserMessage($messages);
         $plan = $this->mockIntent->resolve($question);
 
+        if (($plan[0]['name'] ?? '') === 'conversational') {
+            $answer = $this->mockResponder->conversational(
+                (string) ($plan[0]['arguments']['intent'] ?? 'greeting'),
+                $this->hasPriorUserMessages($messages),
+            );
+            $this->emitAnswer($answer, $onDelta);
+
+            return new AgentResult($answer, [], [], 1, 'mock');
+        }
+
+        $preResults = [];
         $toolLog = [];
+
+        if (($plan[0]['name'] ?? '') === 'get_movie' && ! isset($plan[0]['arguments']['movie_id'])) {
+            [$plan, $preResults, $toolLog] = $this->resolveMovieDetail($plan, $token, $onTool);
+        }
+
         $results = [];
 
-        foreach ($plan as $call) {
+        foreach ($plan as $index => $call) {
+            if (isset($preResults[$index])) {
+                $results[] = $preResults[$index];
+
+                continue;
+            }
+
             $entry = $this->executeTool($call['name'], $call['arguments'], $token);
             $toolLog[] = $entry;
             $onTool($entry);
@@ -132,13 +154,103 @@ class ToolCallLoop
         }
 
         $answer = $this->mockResponder->render($plan, $results);
+        $this->emitAnswer($answer, $onDelta);
+
+        return new AgentResult($answer, $toolLog, [], 1, 'mock');
+    }
+
+    /**
+     * Streams the mock answer in small chunks through the delta callback.
+     */
+    private function emitAnswer(string $answer, callable $onDelta): void
+    {
         $chunkSize = max(1, (int) config('assistant.mock_chunk_size', 8));
 
         foreach (mb_str_split($answer, $chunkSize) as $chunk) {
             $onDelta($chunk);
         }
+    }
 
-        return new AgentResult($answer, $toolLog, [], 1, 'mock');
+    /**
+     * True when the conversation already exchanged messages before this turn,
+     * so greetings can acknowledge the ongoing chat.
+     *
+     * @param  array<int, array<string, mixed>>  $messages
+     */
+    private function hasPriorUserMessages(array $messages): bool
+    {
+        $userMessages = 0;
+
+        foreach ($messages as $message) {
+            if (($message['role'] ?? '') === 'user') {
+                $userMessages++;
+
+                if ($userMessages >= 2) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolves the mock `get_movie {title}` pseudo-plan to a concrete call:
+     * lists the published catalog, matches the title locally and returns the
+     * get_movie call with the real movie_id. When nothing matches, the plan
+     * renders the "not found" answer from an empty get_movie result.
+     *
+     * @param  list<array{name: string, arguments: array<string, mixed>}>  $plan
+     * @param  callable(array{name: string, arguments: array<string, mixed>, ok: bool, error: string|null}): void  $onTool
+     * @return array{0: list<array{name: string, arguments: array<string, mixed>}>, 1: list<array{name: string, data: array<mixed>|null, error: string|null}>, 2: list<array{name: string, arguments: array<string, mixed>, ok: bool, error: string|null, data: array<mixed>|null}>}
+     */
+    private function resolveMovieDetail(array $plan, string $token, callable $onTool): array
+    {
+        $title = (string) ($plan[0]['arguments']['title'] ?? '');
+        $toolLog = [];
+        $maxPages = 10;
+
+        for ($page = 1; $page <= $maxPages; $page++) {
+            $entry = $this->executeTool('list_movies', ['status' => 'published', 'page' => $page], $token);
+            $toolLog[] = $entry;
+            $onTool($entry);
+
+            if (! $entry['ok']) {
+                return [
+                    [['name' => 'list_movies', 'arguments' => ['status' => 'published', 'page' => $page]]],
+                    [['name' => 'list_movies', 'data' => null, 'error' => $entry['error']]],
+                    $toolLog,
+                ];
+            }
+
+            $movies = $entry['data']['movies'] ?? [];
+
+            foreach ($movies as $movie) {
+                if ($title === '' || mb_stripos((string) ($movie['title'] ?? ''), $title) === false) {
+                    continue;
+                }
+
+                $movieId = (string) ($movie['id'] ?? $movie['uuid'] ?? '');
+
+                if ($movieId !== '') {
+                    return [
+                        [['name' => 'get_movie', 'arguments' => ['movie_id' => $movieId]]],
+                        [],
+                        $toolLog,
+                    ];
+                }
+            }
+
+            if ($page >= (int) ($entry['data']['pagination']['last_page'] ?? 1)) {
+                break;
+            }
+        }
+
+        return [
+            [['name' => 'get_movie', 'arguments' => ['title' => $title]]],
+            [['name' => 'get_movie', 'data' => [], 'error' => null]],
+            $toolLog,
+        ];
     }
 
     /**
