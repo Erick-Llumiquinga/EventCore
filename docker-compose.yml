@@ -42,6 +42,17 @@ services:
       timeout: 5s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - eventcore-net
+
   # ==========================================
   # 2. Microservices (Laravel)
   # ==========================================
@@ -95,6 +106,37 @@ services:
     networks:
       - eventcore-net
 
+  assistant-service:
+    build:
+      context: ./services/assistant-service
+      dockerfile: Dockerfile
+    container_name: assistant-service
+    restart: unless-stopped
+    volumes:
+      - ./services/assistant-service:/var/www/html
+      - /var/www/html/vendor # Avoid overwriting the container's `vendor` directory
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres # Service name in the Docker network
+      DB_PORT: 5432
+      DB_DATABASE: assistant_db
+      DB_USERNAME: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-secret}
+      REDIS_HOST: redis
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      ASSISTANT_MOCK: ${ASSISTANT_MOCK:-false}
+      # catalog-service reached over the Docker network (host value in .env points to the gateway)
+      CATALOG_SERVICE_URL: http://catalog-service:8000/api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eventcore-net
+
   booking-service:
     build:
       context: ./services/booking-service
@@ -134,6 +176,7 @@ services:
     depends_on:
       - auth-service
       - catalog-service
+      - assistant-service
       - booking-service
     networks:
       - eventcore-net
@@ -169,3 +212,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  ollama_models:

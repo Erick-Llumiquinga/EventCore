@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "EventCore API",
-    "description": "Colección completa de EventCore — 41 endpoints (12 auth + 9 lectura catálogo + 20 admin catálogo).\n\n**Uso:**\n1. Asegúrate de que el stack esté arriba: `docker compose up -d`\n2. Ejecuta primero **POST /auth/login** (guarda el token automáticamente en la variable `token`)\n3. Las carpetas se ejecutan de arriba hacia abajo\n4. El flujo Admin es secuencial: crear → editar → borrar (no toca los datos seed)\n5. **POST /auth/logout** invalida el token — vuelve a ejecutar Login después\n\nGateway: `http://localhost:8000` (auth en `/api/auth/*`, catálogo en `/api/catalog/*`).",
+    "description": "Colección completa de EventCore — 56 endpoints (12 auth + 9 lectura catálogo + 18 admin catálogo + 6 asistente IA + 11 booking).\n\n**Uso:**\n1. Asegúrate de que el stack esté arriba: `docker compose up -d`\n2. Ejecuta primero **POST /auth/login** (guarda el token automáticamente en la variable `token`)\n3. Las carpetas se ejecutan de arriba hacia abajo\n4. El flujo Admin es secuencial: crear → editar → borrar (no toca los datos seed)\n5. **POST /auth/logout** está SIEMPRE al final de la colección (invalida el token para todos los servicios; si se ejecuta antes, el resto responde 401 — vuelve a correr Login)\n6. Asistente: primero **POST /conversations** (guarda `conversation_id`) y luego el chat con ese id — responde JSON en modo mock (`ASSISTANT_MOCK=true`)\n7. Booking: `POST /reservations` bloquea asientos 10 min; el flujo confirm → qr → verify → cancel libera al final (los asientos A1/A2 quedan libres para repetir)\n\nGateway: `http://localhost:8000` (auth `/api/auth/*`, catálogo `/api/catalog/*`, asistente `/api/assistant/*`, booking `/api/booking/*`).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -16,11 +16,25 @@
     { "key": "new_auditorium_id", "value": "" },
     { "key": "new_showtime_id", "value": "" },
     { "key": "new_ticket_type_id", "value": "" },
-    { "key": "new_seat_id", "value": "" }
+    { "key": "new_seat_id", "value": "" },
+    { "key": "conversation_id", "value": "" },
+    { "key": "reservation_code", "value": "" },
+    { "key": "qr_payload", "value": "" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.collectionVariables.set('timestamp', Date.now());"
+        ]
+      }
+    }
   ],
   "item": [
     {
-      "name": "🔐 Auth (12)",
+      "name": "🔐 Auth (11)",
       "description": "Autenticación y gestión de usuarios. Ejecuta Login primero.",
       "item": [
         {
@@ -208,15 +222,6 @@
             "url": { "raw": "{{base_url}}/api/auth/roles", "host": ["{{base_url}}"], "path": ["api", "auth", "roles"] },
             "description": "Lista de roles del sistema."
           }
-        },
-        {
-          "name": "POST /auth/logout",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] },
-            "description": "⚠️ Invalida el token. Ejecútalo al FINAL — vuelve a correr Login después."
-          }
         }
       ]
     },
@@ -235,6 +240,22 @@
         },
         {
           "name": "GET /catalog/cinemas",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Captura cinema_id', function () {",
+                  "    var data = pm.response.json();",
+                  "    if (data.data && data.data.cinemas && data.data.cinemas.length) {",
+                  "        pm.collectionVariables.set('cinema_id', String(data.data.cinemas[0].id));",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
@@ -369,7 +390,7 @@
       ]
     },
     {
-      "name": "🛠 Catálogo — Admin (20)",
+      "name": "🛠 Catálogo — Admin (18)",
       "description": "CRUD completo + cartelera. Cadena secuencial: cada POST captura su `new_*_id` para los siguientes pasos. Al final limpia todo lo creado (no toca datos seed).",
       "item": [
         {
@@ -661,32 +682,6 @@
           }
         },
         {
-          "name": "POST /cinemas/{id}/movies — sync cartelera (admin)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Authorization", "value": "Bearer {{token}}" },
-              { "key": "Content-Type", "value": "application/json" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"movie_ids\": [\"{{new_movie_id}}\"]\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{new_cinema_id}}/movies", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{new_cinema_id}}", "movies"] },
-            "description": "Sincroniza la cartelera completa del cine con la lista dada (reemplaza la anterior). Relación M:N cine↔película."
-          }
-        },
-        {
-          "name": "DELETE /cinemas/{id}/movies/{movieId} — detach (admin)",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
-            "url": { "raw": "{{base_url}}/api/catalog/cinemas/{{new_cinema_id}}/movies/{{new_movie_id}}", "host": ["{{base_url}}"], "path": ["api", "catalog", "cinemas", "{{new_cinema_id}}", "movies", "{{new_movie_id}}"] },
-            "description": "Retira una película de la cartelera sin borrarla."
-          }
-        },
-        {
           "name": "DELETE /ticket-types/{id} (admin)",
           "request": {
             "method": "DELETE",
@@ -741,6 +736,429 @@
           }
         }
       ]
+    },
+    {
+      "name": "🤖 Asistente (6)",
+      "description": "Asistente IA vía JSON (`/api/assistant/*`). Ejecuta Login primero. Flujo: crear conversación (POST) → enviar mensajes con `conversation_id` → listar/abrir/borrar. El chat corre en modo mock (`ASSISTANT_MOCK=true`) y responde JSON (ya no SSE).",
+      "item": [
+        {
+          "name": "GET /assistant/health (público)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/assistant/health", "host": ["{{base_url}}"], "path": ["api", "assistant", "health"] },
+            "description": "Liveness del asistente — sin token."
+          }
+        },
+        {
+          "name": "POST /assistant/conversations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Conversación creada (201) + captura conversation_id', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var conv = pm.response.json().data.conversation;",
+                  "    pm.expect(conv).to.have.property('id');",
+                  "    pm.collectionVariables.set('conversation_id', conv.id);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Consulta de cartelera\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/assistant/conversations", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations"] },
+            "description": "Crea la conversación (paso obligatorio antes del chat). `title` es opcional (máx 120, si se omite usa 'Nueva conversación'). Devuelve 201 y guarda el id en `conversation_id`."
+          }
+        },
+        {
+          "name": "POST /assistant/chat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Chat JSON 200 con contenido y conversation_id', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('content');",
+                  "    pm.expect(data.content.length).to.be.above(0);",
+                  "    pm.expect(data.conversation_id).to.eql(pm.collectionVariables.get('conversation_id'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Qué películas están en cartelera?\",\n  \"conversation_id\": \"{{conversation_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/assistant/chat", "host": ["{{base_url}}"], "path": ["api", "assistant", "chat"] },
+            "description": "Envía un mensaje (JSON, ya no SSE). `message` (máx 4000) y `conversation_id` (uuid, obligatorio — debe existir y pertenecer al usuario). Throttle: 20 req/min. Responde `data: {conversation_id, message_id, mode, usage, content, tools}`; en la primera respuesta el título de la conversación se actualiza con el mensaje."
+          }
+        },
+        {
+          "name": "GET /assistant/conversations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista paginada + captura conversation_id', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('conversations');",
+                  "    pm.expect(data).to.have.property('pagination');",
+                  "    if (data.conversations.length) {",
+                  "        pm.collectionVariables.set('conversation_id', data.conversations[0].id);",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/assistant/conversations", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations"] },
+            "description": "Conversaciones del usuario autenticado (paginado, `?per_page=`). Guarda el primer id en `conversation_id`."
+          }
+        },
+        {
+          "name": "GET /assistant/conversations/{conversation}",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/assistant/conversations/{{conversation_id}}", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations", "{{conversation_id}}"] },
+            "description": "Detalle de la conversación con sus mensajes. Requiere haber ejecutado la lista antes (o el chat)."
+          }
+        },
+        {
+          "name": "DELETE /assistant/conversations/{conversation}",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/assistant/conversations/{{conversation_id}}", "host": ["{{base_url}}"], "path": ["api", "assistant", "conversations", "{{conversation_id}}"] },
+            "description": "Borra la conversación capturada."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎫 Booking (11)",
+      "description": "Reservas de boletos vía booking-service (`/api/booking/*`): disponibilidad en tiempo real (PostgreSQL + locks Redis de 10 min), reserva → confirmación → QR firmado → tracking → cancelación. Ejecuta Login primero. El flujo es secuencial y al final libera los asientos A1/A2 para poder repetir. Si los asientos están ocupados, cámbialos en el body de POST /reservations (formato Fila+Número, p. ej. B3).",
+      "item": [
+        {
+          "name": "GET /booking/health (público)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/booking/health", "host": ["{{base_url}}"], "path": ["api", "booking", "health"] },
+            "description": "Liveness del booking — sin token. Devuelve también `seat_lock_ttl_seconds` (600)."
+          }
+        },
+        {
+          "name": "GET /booking/showtimes/{id}/seats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Disponibilidad con seat_map', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('showtime');",
+                  "    pm.expect(data).to.have.property('seat_map');",
+                  "    pm.expect(data.seat_map.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/showtimes/{{showtime_id}}/seats", "host": ["{{base_url}}"], "path": ["api", "booking", "showtimes", "{{showtime_id}}", "seats"] },
+            "description": "Mapa de asientos unificado: `seat_map[]` (cada asiento con `seat_code`, `booking_status`: available/locked/sold) + `confirmed_seats`, `locked_seats` (Redis) y `lock_ttl_seconds`."
+          }
+        },
+        {
+          "name": "POST /booking/reservations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reserva pending creada + captura booking_code', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.status).to.eql('pending');",
+                  "    pm.collectionVariables.set('reservation_code', data.booking_code);",
+                  "    pm.expect(data.remaining_lock_seconds).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtime_id\": {{showtime_id}},\n  \"seats\": [\"A1\", \"A2\"],\n  \"movie_title\": \"Abyssal - Terror submarino\",\n  \"cinema_name\": \"Cine Multicentro Quito\",\n  \"auditorium_name\": \"Sala 1 - 2D\",\n  \"showtime_start\": \"2026-11-01T19:30:00Z\",\n  \"unit_price\": 15.20\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/booking/reservations", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations"] },
+            "description": "Crea la reserva y bloquea los asientos en Redis por 10 min (status `pending`). `seats` (1-15, formato `A1`) debe estar disponible. Guarda `data.booking_code` en `reservation_code`."
+          }
+        },
+        {
+          "name": "GET /booking/reservations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista paginada de reservas', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('reservations');",
+                  "    pm.expect(data).to.have.property('pagination');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations?status=pending", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations"], "query": [{ "key": "status", "value": "pending", "description": "pending | confirmed | cancelled | expired" }] },
+            "description": "Reservas del usuario autenticado. Filtros: `status`, `showtime_id`, `page`, `per_page`."
+          }
+        },
+        {
+          "name": "GET /booking/reservations/{code}",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Detalle de la reserva', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.booking_code).to.eql(pm.collectionVariables.get('reservation_code'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}"] },
+            "description": "Detalle con `seats`, `tickets`, `trackings[]` y tiempos (`expires_at`, `remaining_lock_seconds`)."
+          }
+        },
+        {
+          "name": "POST /booking/reservations/{code}/confirm",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reserva confirmada + QR generado', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.status).to.eql('confirmed');",
+                  "    pm.expect(data.qr_svg).to.not.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_method\": \"card\",\n  \"card_holder\": \"Super Admin\",\n  \"card_last_four\": \"4242\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}/confirm", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}", "confirm"] },
+            "description": "Confirma el pago, asigna los asientos definitivamente y genera el QR firmado. Todos los campos del body son opcionales. 409 si ya está confirmada."
+          }
+        },
+        {
+          "name": "GET /booking/reservations/{code}/qr",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('QR obtenido + captura payload', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.qr_svg).to.not.be.null;",
+                  "    pm.collectionVariables.set('qr_payload', data.qr_payload_raw);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}/qr", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}", "qr"] },
+            "description": "QR en SVG + payload firmado. Solo para reservas `confirmed` (409 si no). Guarda `data.qr_payload_raw` en `qr_payload`."
+          }
+        },
+        {
+          "name": "POST /booking/qr/verify",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('QR verificado válido', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.valid).to.be.true;",
+                  "    pm.expect(data.booking_code).to.eql(pm.collectionVariables.get('reservation_code'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qr_payload\": {{qr_payload}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/booking/qr/verify", "host": ["{{base_url}}"], "path": ["api", "booking", "qr", "verify"] },
+            "description": "Verifica la firma y estado del QR (lo usa el escáner/organizador). Requiere haber ejecutado GET /qr antes (captura `qr_payload`). 422 si la firma no es válida."
+          }
+        },
+        {
+          "name": "GET /booking/reservations/{code}/tracking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Tracking con eventos', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('events');",
+                  "    pm.expect(data.events.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}/tracking", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}", "tracking"] },
+            "description": "Historial de eventos: `seats_locked_redis` → `payment_confirmed` → `qr_generated` → `notification_sent` → `reservation_cancelled`."
+          }
+        },
+        {
+          "name": "GET /booking/admin/reservations (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Panel admin de reservas', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data).to.have.property('reservations');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/admin/reservations?status=confirmed", "host": ["{{base_url}}"], "path": ["api", "booking", "admin", "reservations"], "query": [{ "key": "status", "value": "confirmed" }] },
+            "description": "Dashboard de organizador/admin (rol `admin` u `organizer`). Mismos filtros que la lista del usuario."
+          }
+        },
+        {
+          "name": "POST /booking/reservations/{code}/cancel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reserva cancelada y asientos liberados', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    var data = pm.response.json().data;",
+                  "    pm.expect(data.status).to.eql('cancelled');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/booking/reservations/{{reservation_code}}/cancel", "host": ["{{base_url}}"], "path": ["api", "booking", "reservations", "{{reservation_code}}", "cancel"] },
+            "description": "Último paso del flujo: cancela la reserva y libera los asientos (A1/A2 quedan disponibles para repetir la carpeta). 409 si ya estaba cancelada/expirada."
+          }
+        }
+      ]
+    },
+    {
+      "name": "POST /auth/logout (siempre al final)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+        "url": { "raw": "{{base_url}}/api/auth/logout", "host": ["{{base_url}}"], "path": ["api", "auth", "logout"] },
+        "description": "⚠️ Invalida el token para TODOS los servicios. Va al final de la colección: si se ejecuta antes, el resto de requests responde 401. Después vuelve a correr Login."
+      }
     }
   ]
 }
