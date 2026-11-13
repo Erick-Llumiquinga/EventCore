@@ -1,0 +1,50 @@
+flowchart TD
+    usuario(("Navegador<br/>usuario"))
+    frontend["Frontend React + Vite · :5173<br/>Login · Dashboard · Flujo de reserva (mock)<br/>Widget de asistente IA"]
+    gateway["api-gateway<br/>Nginx · :8000<br/>/api/auth · /api/catalog<br/>/api/assistant · /api/booking · /health"]
+
+    auth["auth-service<br/>Laravel + JWT HS256<br/>register · login · me · logout · refresh<br/>profile · password · users · roles"]
+    catalog["catalog-service<br/>Laravel REST<br/>cinemas · movies · showtimes<br/>ticket-types · seats · cartelera"]
+    assistant["assistant-service<br/>Laravel + DeepSeek<br/>chat · conversations<br/>(tool-loop contra catálogo)"]
+    booking["booking-service<br/>Laravel<br/>reservaciones · QR firmado<br/>bloqueo de asientos"]
+
+    subgraph pg["PostgreSQL · localhost:5432 (contenedor único)"]
+        authdb[("auth_db<br/>persons · users · roles")]
+        catalogdb[("catalog_db<br/>cinemas · movies · auditoriums<br/>showtimes · ticket_types · seats<br/>movie_cinema")]
+        assistdb[("assistant_db<br/>conversations · messages")]
+        bookdb[("booking_db<br/>reservations · _seats<br/>_tickets · _trackings")]
+    end
+
+    redis[("Redis · localhost:6379<br/>caché + blacklist JWT<br/>+ bloqueo de asientos (10 min)")]
+    ollama["ollama · :11434<br/>(contenedor sin uso)"]
+
+    usuario -- "HTTP :5173" --> frontend
+    frontend -- "axios + Bearer JWT<br/>VITE_API_URL" --> gateway
+    gateway -- "/api/auth" --> auth
+    gateway -- "/api/catalog/<br/>(quita el prefijo)" --> catalog
+    gateway -- "/api/assistant/<br/>(quita el prefijo)" --> assistant
+    gateway -- "/api/booking/<br/>(quita el prefijo)" --> booking
+    auth -. "JWT_SECRET compartido:<br/>validación offline del token<br/>sin llamar a auth por HTTP" .- catalog
+    auth -.-> assistant
+    auth -.-> booking
+    assistant -- "HTTP interno<br/>CATALOG_SERVICE_URL" --> catalog
+    booking -- "HTTP interno<br/>CATALOG_SERVICE_URL" --> catalog
+
+    auth --> authdb
+    catalog --> catalogdb
+    assistant --> assistdb
+    booking --> bookdb
+    auth -- "logout: blacklist del jti" --> redis
+    catalog -- "jwt.verify: blacklist + caché" --> redis
+    assistant -- "jwt.verify: blacklist" --> redis
+    booking -- "jwt.verify + locks de asientos" --> redis
+
+    classDef browser fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a
+    classDef service fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef store fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+    classDef unused fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:6 4,color:#475569
+
+    class usuario,frontend browser
+    class gateway,auth,catalog,assistant,booking service
+    class authdb,catalogdb,assistdb,bookdb,redis store
+    class ollama unused
