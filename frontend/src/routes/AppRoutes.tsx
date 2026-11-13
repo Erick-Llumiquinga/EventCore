@@ -11,6 +11,7 @@ import { SelectSeats } from "../pages/SelectSeats";
 import { CheckoutPayment } from "../pages/CheckoutPayment";
 import { BookingConfirmed } from "../pages/BookingConfirmed";
 import { ProtectedRoute } from "../components/ProtectedRoute";
+import { AssistantChat } from "../components/AssistantChat";
 
 export const AppRoutes: React.FC = () => {
   return (
@@ -81,6 +82,7 @@ export const AppRoutes: React.FC = () => {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      <AssistantChat />
     </div>
   );
 };

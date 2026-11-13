@@ -42,6 +42,17 @@ services:
       timeout: 5s
       retries: 5
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - eventcore-net
+
   # ==========================================
   # 2. Microservices (Laravel)
   # ==========================================
@@ -112,6 +123,7 @@ services:
       DB_USERNAME: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-secret}
       REDIS_HOST: redis
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
       ASSISTANT_MOCK: ${ASSISTANT_MOCK:-false}
@@ -200,3 +212,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  ollama_models:
