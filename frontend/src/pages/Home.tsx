@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useBooking } from "../context/BookingContext";
 import { catalogApi } from "../api/catalog";
@@ -75,9 +75,6 @@ export const Home: React.FC = () => {
         const result = await catalogApi.getMovies({ per_page: 15 });
         if (isMounted) {
           setMovies(result.movies);
-          if (result.movies.length > 0) {
-            setSelectedMovie(result.movies[0]);
-          }
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -99,7 +96,7 @@ export const Home: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [setSelectedMovie]);
+  }, []);
 
   const handleReserveClick = () => {
     if (!isAuthenticated) {
@@ -258,11 +255,9 @@ export const Home: React.FC = () => {
                     key={movie.id}
                     className="group bg-[#222429]/95 border border-white/10 hover:border-[#C7AA78]/50 rounded-3xl overflow-hidden flex flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/50"
                   >
-                    {/* Clickable Movie Poster -> Opens MovieDetail (/peliculas/:id) in a new tab */}
-                    <a
-                      href={`/peliculas/${movie.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    {/* Clickable Movie Poster -> Navigates to MovieDetail (/peliculas/:id) in the same tab */}
+                    <Link
+                      to={`/peliculas/${movie.id}`}
                       title={`Ver más información de ${movie.title}`}
                       className="relative h-56 w-full overflow-hidden bg-[#141518] block cursor-pointer"
                     >
@@ -282,7 +277,7 @@ export const Home: React.FC = () => {
                       <span className="absolute top-3.5 left-3.5 px-2.5 py-1 rounded-lg bg-[#C7AA78] text-[#1b1c20] text-[11px] font-extrabold uppercase tracking-wider shadow-md">
                         {movie.genre}
                       </span>
-                    </a>
+                    </Link>
 
                     {/* Card Content */}
                     <div className="p-6 flex-1 flex flex-col justify-between space-y-5">

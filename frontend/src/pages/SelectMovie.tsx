@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { MapPin, ChevronDown, Clock, Loader2, AlertCircle } from "lucide-react";
 import { CINEMAS, type Movie } from "../data/mockCinema";
 import { catalogApi } from "../api/catalog";
@@ -23,9 +23,6 @@ export const SelectMovie: React.FC = () => {
         const result = await catalogApi.getMovies({ per_page: 15 });
         if (isMounted) {
           setMovies(result.movies);
-          if (result.movies.length > 0) {
-            setSelectedMovie(result.movies[0]);
-          }
         }
       } catch (err: unknown) {
         if (isMounted) {
@@ -47,7 +44,7 @@ export const SelectMovie: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [setSelectedMovie]);
+  }, []);
 
   const handleSelectMovie = (movie: Movie) => {
     setSelectedMovie(movie);
@@ -140,11 +137,9 @@ export const SelectMovie: React.FC = () => {
                   key={movie.id}
                   className="group bg-[#24262b] border border-white/10 hover:border-[#C7AA78]/50 rounded-2xl overflow-hidden flex flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/40"
                 >
-                  {/* Poster -> Clickable to open MovieDetail in a new tab */}
-                  <a
-                    href={`/peliculas/${movie.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  {/* Poster -> Clickable to navigate to MovieDetail in the same tab */}
+                  <Link
+                    to={`/peliculas/${movie.id}`}
                     title={`Ver más información de ${movie.title}`}
                     className="relative h-52 w-full overflow-hidden bg-[#18191c] block cursor-pointer"
                   >
@@ -159,7 +154,7 @@ export const SelectMovie: React.FC = () => {
                     <span className="absolute top-3 right-3 px-2.5 py-0.5 rounded-lg bg-[#18191c]/90 backdrop-blur-md border border-[#C7AA78]/40 text-[#C7AA78] text-xs font-extrabold">
                       {movie.ageRating}
                     </span>
-                  </a>
+                  </Link>
 
                   {/* Details */}
                   <div className="p-5 flex-1 flex flex-col justify-between space-y-4">

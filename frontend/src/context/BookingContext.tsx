@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import {
   CINEMAS,
   DATES,
@@ -32,22 +32,85 @@ interface BookingContextType {
   bookingCode: string;
 }
 
+interface PersistedBookingState {
+  selectedCinema: string;
+  selectedMovie: Movie;
+  selectedDate: DateOption;
+  selectedTime: string;
+  adultTickets: number;
+  discountTickets: number;
+  selectedSeats: string[];
+}
+
+const BOOKING_STORAGE_KEY = "eventcore_booking_state_v1";
+
+function loadPersistedBooking(): Partial<PersistedBookingState> {
+  try {
+    const raw = sessionStorage.getItem(BOOKING_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Partial<PersistedBookingState>) : {};
+  } catch {
+    return {};
+  }
+}
+
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
 export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [selectedCinema, setSelectedCinema] = useState<string>(CINEMAS[0]);
-  const [selectedMovie, setSelectedMovie] = useState<Movie>(MOVIES[0]);
-  const [selectedDate, setSelectedDate] = useState<DateOption>(DATES[1]); // Sáb 25 Oct
-  const [selectedTime, setSelectedTime] = useState<string>(SHOWTIMES[1]); // 17:00
+  const initial = loadPersistedBooking();
+
+  const [selectedCinema, setSelectedCinema] = useState<string>(
+    initial.selectedCinema || CINEMAS[0],
+  );
+  const [selectedMovie, setSelectedMovie] = useState<Movie>(
+    initial.selectedMovie || MOVIES[0],
+  );
+  const [selectedDate, setSelectedDate] = useState<DateOption>(
+    initial.selectedDate || DATES[1],
+  );
+  const [selectedTime, setSelectedTime] = useState<string>(
+    initial.selectedTime || SHOWTIMES[1],
+  );
 
   // Ticket quantities chosen in Step 2 (default 0)
-  const [adultTickets, setAdultTicketsState] = useState<number>(0);
-  const [discountTickets, setDiscountTicketsState] = useState<number>(0);
+  const [adultTickets, setAdultTicketsState] = useState<number>(
+    initial.adultTickets ?? 0,
+  );
+  const [discountTickets, setDiscountTicketsState] = useState<number>(
+    initial.discountTickets ?? 0,
+  );
 
-  const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
+  const [selectedSeats, setSelectedSeats] = useState<string[]>(
+    initial.selectedSeats || [],
+  );
   const [bookingCode] = useState<string>("EC-784523");
+
+  // Persist booking state across route changes and reloads
+  useEffect(() => {
+    try {
+      const state: PersistedBookingState = {
+        selectedCinema,
+        selectedMovie,
+        selectedDate,
+        selectedTime,
+        adultTickets,
+        discountTickets,
+        selectedSeats,
+      };
+      sessionStorage.setItem(BOOKING_STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // Ignore storage errors
+    }
+  }, [
+    selectedCinema,
+    selectedMovie,
+    selectedDate,
+    selectedTime,
+    adultTickets,
+    discountTickets,
+    selectedSeats,
+  ]);
 
   const totalTickets = adultTickets + discountTickets;
 
@@ -78,7 +141,6 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({
         return prev.filter((s) => s !== seatId);
       }
       if (prev.length >= totalTickets) {
-        // Replace the first selected seat with the newly chosen seat
         return [...prev.slice(prev.length - totalTickets + 1), seatId];
       }
       return [...prev, seatId];
@@ -90,6 +152,7 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({
     setAdultTicketsState(0);
     setDiscountTicketsState(0);
     setSelectedSeats([]);
+    sessionStorage.removeItem(BOOKING_STORAGE_KEY);
   };
 
   const totalPrice =

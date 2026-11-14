@@ -22,6 +22,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
 }
 
+const AUTH_VERIFIED_SESSION_KEY = "eventcore_auth_verified_v1";
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -40,19 +42,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Validate token on mount against /api/auth/me
+  // Only call /api/auth/me if token exists and hasn't been verified yet in this session
   useEffect(() => {
     const initAuth = async () => {
       const storedToken = localStorage.getItem("token");
+      const savedUser = localStorage.getItem("user");
+      const alreadyVerified = sessionStorage.getItem(AUTH_VERIFIED_SESSION_KEY);
+
       if (storedToken) {
+        if (savedUser && alreadyVerified === "true") {
+          setIsLoading(false);
+          return;
+        }
+
         try {
           const freshUser = await authApi.getMe();
           setUser(freshUser);
           localStorage.setItem("user", JSON.stringify(freshUser));
+          sessionStorage.setItem(AUTH_VERIFIED_SESSION_KEY, "true");
         } catch (error) {
           console.warn("Sesión expirada o token inválido:", error);
           localStorage.removeItem("token");
           localStorage.removeItem("user");
+          sessionStorage.removeItem(AUTH_VERIFIED_SESSION_KEY);
           setToken(null);
           setUser(null);
         }
@@ -69,6 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUser(result.user);
     localStorage.setItem("token", result.access_token);
     localStorage.setItem("user", JSON.stringify(result.user));
+    sessionStorage.setItem(AUTH_VERIFIED_SESSION_KEY, "true");
   };
 
   const register = async (data: RegisterData) => {
@@ -87,6 +100,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       setUser(null);
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      sessionStorage.removeItem(AUTH_VERIFIED_SESSION_KEY);
     }
   };
 
