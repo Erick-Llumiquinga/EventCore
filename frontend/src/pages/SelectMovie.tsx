@@ -1,12 +1,53 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MapPin, ChevronDown, Clock, Star } from "lucide-react";
-import { CINEMAS, MOVIES, type Movie } from "../data/mockCinema";
+import { MapPin, ChevronDown, Clock, Loader2, AlertCircle } from "lucide-react";
+import { CINEMAS, type Movie } from "../data/mockCinema";
+import { catalogApi } from "../api/catalog";
 import { useBooking } from "../context/BookingContext";
 
 export const SelectMovie: React.FC = () => {
   const navigate = useNavigate();
   const { selectedCinema, setSelectedCinema, setSelectedMovie } = useBooking();
+
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMovies = async () => {
+      setIsLoading(true);
+      setErrorMsg(null);
+      try {
+        const result = await catalogApi.getMovies({ per_page: 15 });
+        if (isMounted) {
+          setMovies(result.movies);
+          if (result.movies.length > 0) {
+            setSelectedMovie(result.movies[0]);
+          }
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          setErrorMsg(
+            err instanceof Error
+              ? err.message
+              : "No se pudieron cargar las películas del catálogo.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadMovies();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [setSelectedMovie]);
 
   const handleSelectMovie = (movie: Movie) => {
     setSelectedMovie(movie);
@@ -76,56 +117,81 @@ export const SelectMovie: React.FC = () => {
           </div>
         </div>
 
-        {/* Movies Grid */}
+        {/* Movies Grid from /api/catalog/movies */}
         <div className="p-6 sm:p-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {MOVIES.map((movie) => (
-              <div
-                key={movie.id}
-                className="group bg-[#24262b] border border-white/10 hover:border-[#C7AA78]/50 rounded-2xl overflow-hidden flex flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/40"
-              >
-                {/* Poster */}
-                <div className="relative aspect-[4/4.2] w-full overflow-hidden bg-[#18191c]">
-                  <img
-                    src={movie.poster}
-                    alt={movie.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#24262b] via-transparent to-transparent opacity-60" />
-                </div>
-
-                {/* Details */}
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                  <div className="space-y-1.5">
-                    <h3 className="text-base font-bold text-white leading-snug">
-                      {movie.title}
-                    </h3>
-                    <p className="text-xs text-[#F2F0EB]/60 font-medium">
-                      {movie.genre}
-                    </p>
-
-                    <div className="flex items-center gap-1.5 text-xs text-[#F2F0EB]/70 pt-1">
-                      <Clock className="w-3.5 h-3.5 text-[#F2F0EB]/50" />
-                      <span>{movie.duration}</span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                      <Star className="w-3.5 h-3.5 fill-[#E5A93C] text-[#E5A93C]" />
-                      <span>{movie.rating.toFixed(1)}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMovie(movie)}
-                    className="w-full py-2.5 px-4 rounded-full bg-[#C7AA78] hover:bg-[#d5bd92] text-[#1c1d21] font-bold text-xs tracking-wide transition-all shadow-md shadow-[#C7AA78]/15 cursor-pointer"
+          {isLoading ? (
+            <div className="py-16 flex flex-col items-center justify-center gap-3 text-[#F2F0EB]/70">
+              <Loader2 className="w-8 h-8 text-[#C7AA78] animate-spin" />
+              <span className="text-sm">Cargando películas del catálogo...</span>
+            </div>
+          ) : errorMsg ? (
+            <div className="p-6 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center gap-3 text-red-300 text-sm">
+              <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          ) : movies.length === 0 ? (
+            <div className="py-12 text-center text-sm text-[#F2F0EB]/60">
+              No hay películas disponibles en el catálogo.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {movies.map((movie) => (
+                <div
+                  key={movie.id}
+                  className="group bg-[#24262b] border border-white/10 hover:border-[#C7AA78]/50 rounded-2xl overflow-hidden flex flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-black/40"
+                >
+                  {/* Poster -> Clickable to open MovieDetail in a new tab */}
+                  <a
+                    href={`/peliculas/${movie.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Ver más información de ${movie.title}`}
+                    className="relative h-52 w-full overflow-hidden bg-[#18191c] block cursor-pointer"
                   >
-                    Ver horarios
-                  </button>
+                    <img
+                      src={movie.poster}
+                      alt={movie.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#24262b] via-transparent to-transparent opacity-60" />
+
+                    {/* Rating Badge (+12, +7, +16) */}
+                    <span className="absolute top-3 right-3 px-2.5 py-0.5 rounded-lg bg-[#18191c]/90 backdrop-blur-md border border-[#C7AA78]/40 text-[#C7AA78] text-xs font-extrabold">
+                      {movie.ageRating}
+                    </span>
+                  </a>
+
+                  {/* Details */}
+                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                    <div className="space-y-2">
+                      <h3 className="text-base font-bold text-white leading-snug">
+                        {movie.title}
+                      </h3>
+
+                      <div className="flex items-center gap-2 text-xs text-[#F2F0EB]/70">
+                        <Clock className="w-3.5 h-3.5 text-[#C7AA78]" />
+                        <span>{movie.duration}</span>
+                        <span>&bull;</span>
+                        <span>Clasificación {movie.ageRating}</span>
+                      </div>
+
+                      <p className="text-xs text-[#F2F0EB]/65 leading-relaxed line-clamp-3">
+                        {movie.synopsis}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSelectMovie(movie)}
+                      className="w-full py-2.5 px-4 rounded-full bg-[#C7AA78] hover:bg-[#d5bd92] text-[#1c1d21] font-bold text-xs tracking-wide transition-all shadow-md shadow-[#C7AA78]/15 cursor-pointer"
+                    >
+                      Ver horarios
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

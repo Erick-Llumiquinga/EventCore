@@ -6,6 +6,7 @@ import { Login } from "../pages/Login";
 import { Register } from "../pages/Register";
 import { Dashboard } from "../pages/Dashboard";
 import { SelectMovie } from "../pages/SelectMovie";
+import { MovieDetail } from "../pages/MovieDetail";
 import { SelectShowtime } from "../pages/SelectShowtime";
 import { SelectSeats } from "../pages/SelectSeats";
 import { CheckoutPayment } from "../pages/CheckoutPayment";
@@ -19,8 +20,9 @@ export const AppRoutes: React.FC = () => {
       <Navbar />
       <main className="flex-1">
         <Routes>
-          {/* Main Landing with Full-Width Carousel */}
+          {/* Main Landing with Full-Width Carousel & Public Movie Detail */}
           <Route path="/" element={<Home />} />
+          <Route path="/peliculas/:id" element={<MovieDetail />} />
 
           {/* 5 Individual Cinema Booking Screens (Protected) */}
           <Route
