@@ -4,7 +4,7 @@ flowchart TD
     gateway["api-gateway<br/>Nginx · :8000<br/>/api/auth · /api/catalog<br/>/api/assistant · /api/booking · /health"]
 
     auth["auth-service<br/>Laravel + JWT HS256<br/>register · login · me · logout · refresh<br/>profile · password · users · roles"]
-    catalog["catalog-service<br/>Laravel REST<br/>cinemas · movies · showtimes<br/>ticket-types · seats · cartelera"]
+    catalog["catalog-service<br/>Laravel REST<br/>cinemas · movies · showtimes<br/>ticket-types · seats · cartelera<br/>lectura pública · escritura con JWT + rol"]
     assistant["assistant-service<br/>Laravel + DeepSeek<br/>chat · conversations<br/>(tool-loop contra catálogo)"]
     booking["booking-service<br/>Laravel<br/>reservaciones · QR firmado<br/>bloqueo de asientos"]
 
@@ -21,7 +21,7 @@ flowchart TD
     usuario -- "HTTP :5173" --> frontend
     frontend -- "axios + Bearer JWT<br/>VITE_API_URL" --> gateway
     gateway -- "/api/auth" --> auth
-    gateway -- "/api/catalog/<br/>(quita el prefijo)" --> catalog
+    gateway -- "/api/catalog/ (quita el prefijo)<br/>lectura sin JWT · admin con JWT" --> catalog
     gateway -- "/api/assistant/<br/>(quita el prefijo)" --> assistant
     gateway -- "/api/booking/<br/>(quita el prefijo)" --> booking
     auth -. "JWT_SECRET compartido:<br/>validación offline del token<br/>sin llamar a auth por HTTP" .- catalog
@@ -35,7 +35,7 @@ flowchart TD
     assistant --> assistdb
     booking --> bookdb
     auth -- "logout: blacklist del jti" --> redis
-    catalog -- "jwt.verify: blacklist + caché" --> redis
+    catalog -- "escritura admin:<br/>jwt.verify + blacklist" --> redis
     assistant -- "jwt.verify: blacklist" --> redis
     booking -- "jwt.verify + locks de asientos" --> redis
 
