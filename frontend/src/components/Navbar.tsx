@@ -1,11 +1,16 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { Ticket, LogOut, CircleUserRound } from "lucide-react";
+import { Ticket, LogOut, CircleUserRound, Building2 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, role, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const roleSlug = (role?.slug || user?.role || "").toLowerCase();
+  const isSuperAdmin =
+    isAuthenticated && (roleSlug === "admin" || roleSlug === "super_admin");
 
   const handleLogout = async () => {
     await logout();
@@ -25,8 +30,23 @@ export const Navbar: React.FC = () => {
           </span>
         </Link>
 
-        {/* Right: User Account */}
+        {/* Right: Admin Links & User Account */}
         <div className="flex items-center gap-3 shrink-0">
+          {/* Option strictly visible only for Super Admin */}
+          {isSuperAdmin && (
+            <Link
+              to="/admin/salas"
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                location.pathname === "/admin/salas"
+                  ? "bg-[#C7AA78] text-[#1c1d21] border-[#C7AA78] shadow-md shadow-[#C7AA78]/20"
+                  : "bg-[#222429] text-[#C7AA78] border-[#C7AA78]/40 hover:bg-[#C7AA78]/15"
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Administrar Salas</span>
+            </Link>
+          )}
+
           {isAuthenticated && user ? (
             <div className="flex items-center gap-2.5">
               <Link

@@ -7,6 +7,8 @@ export interface CatalogCinemaDto {
   name: string;
   address: string;
   city: string;
+  auditoriums_count?: number;
+  auditoriums?: CatalogAuditoriumDto[];
 }
 
 export interface CatalogAuditoriumDto {
@@ -61,6 +63,22 @@ export interface CatalogPagination {
 export interface MoviesListPayload {
   movies: CatalogMovieDto[];
   pagination: CatalogPagination;
+}
+
+export interface CinemasListPayload {
+  cinemas: CatalogCinemaDto[];
+  pagination: CatalogPagination;
+}
+
+export interface CreateAuditoriumPayload {
+  cinema_id: number;
+  name: string;
+  capacity: number;
+}
+
+export interface UpdateAuditoriumPayload {
+  name?: string;
+  capacity?: number;
 }
 
 export interface CachedMoviesResult {
@@ -270,6 +288,76 @@ export const catalogApi = {
 
     inFlightDetailRequests.set(id, requestPromise);
     return requestPromise;
+  },
+
+  getCinemas: async (params?: {
+    page?: number;
+    per_page?: number;
+    city?: string;
+  }): Promise<{
+    cinemas: CatalogCinemaDto[];
+    pagination: CatalogPagination;
+  }> => {
+    const response = await apiClient.get<ApiResponse<CinemasListPayload>>(
+      "/catalog/cinemas",
+      { params: params || { per_page: 50 } },
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(
+        response.data.message || "No se pudo obtener la lista de cines",
+      );
+    }
+
+    return {
+      cinemas: response.data.data.cinemas || [],
+      pagination: response.data.data.pagination,
+    };
+  },
+
+  createAuditorium: async (
+    payload: CreateAuditoriumPayload,
+  ): Promise<CatalogAuditoriumDto> => {
+    const response = await apiClient.post<ApiResponse<CatalogAuditoriumDto>>(
+      "/catalog/auditoriums",
+      payload,
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(response.data.message || "Error al crear la sala");
+    }
+
+    catalogApi.clearCache();
+    return response.data.data;
+  },
+
+  updateAuditorium: async (
+    id: number,
+    payload: UpdateAuditoriumPayload,
+  ): Promise<CatalogAuditoriumDto> => {
+    const response = await apiClient.put<ApiResponse<CatalogAuditoriumDto>>(
+      `/catalog/auditoriums/${id}`,
+      payload,
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(response.data.message || "Error al actualizar la sala");
+    }
+
+    catalogApi.clearCache();
+    return response.data.data;
+  },
+
+  deleteAuditorium: async (id: number): Promise<void> => {
+    const response = await apiClient.delete<ApiResponse<{ id: number }>>(
+      `/catalog/auditoriums/${id}`,
+    );
+
+    if (response.data.code !== 200) {
+      throw new Error(response.data.message || "Error al eliminar la sala");
+    }
+
+    catalogApi.clearCache();
   },
 
   clearCache: (): void => {

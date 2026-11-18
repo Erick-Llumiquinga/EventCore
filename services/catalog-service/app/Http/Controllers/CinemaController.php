@@ -18,7 +18,7 @@ class CinemaController extends Controller
      */
     public function index(CinemasIndexRequest $request): JsonResponse
     {
-        $query = Cinema::query()->withCount('auditoriums')->orderBy('name');
+        $query = Cinema::query()->withCount('auditoriums')->with('auditoriums')->orderBy('name');
 
         if ($request->filled('city')) {
             $query->whereRaw('LOWER(city) = ?', [mb_strtolower($request->string('city'))]);
