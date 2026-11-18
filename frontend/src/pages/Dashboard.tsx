@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
   User,
@@ -9,10 +10,14 @@ import {
   Phone,
   IdCard,
   CheckCircle2,
+  Building2,
+  ArrowRight,
 } from "lucide-react";
 
 export const Dashboard: React.FC = () => {
   const { user, person, role } = useAuth();
+  const roleSlug = (role?.slug || user?.role || "").toLowerCase();
+  const isSuperAdmin = roleSlug === "admin" || roleSlug === "super_admin";
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-[#202124] text-[#F2F0EB] p-6 lg:p-12 flex items-center justify-center">
@@ -123,6 +128,20 @@ export const Dashboard: React.FC = () => {
                 </span>
               </div>
             </div>
+
+            {/* Super Admin Action Link */}
+            {isSuperAdmin && (
+              <div className="pt-2">
+                <Link
+                  to="/admin/salas"
+                  className="w-full py-3.5 px-5 rounded-2xl bg-[#C7AA78] hover:bg-[#d5bd92] text-[#202124] font-bold text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-[#C7AA78]/20 transition-all"
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>Ir a Administración de Salas</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>

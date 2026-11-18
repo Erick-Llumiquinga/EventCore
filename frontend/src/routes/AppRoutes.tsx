@@ -11,6 +11,7 @@ import { SelectShowtime } from "../pages/SelectShowtime";
 import { SelectSeats } from "../pages/SelectSeats";
 import { CheckoutPayment } from "../pages/CheckoutPayment";
 import { BookingConfirmed } from "../pages/BookingConfirmed";
+import { AdminAuditoriums } from "../pages/AdminAuditoriums";
 import { ProtectedRoute } from "../components/ProtectedRoute";
 import { AssistantChat } from "../components/AssistantChat";
 
@@ -76,6 +77,14 @@ export const AppRoutes: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/salas"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "super_admin"]}>
+                <AdminAuditoriums />
               </ProtectedRoute>
             }
           />
