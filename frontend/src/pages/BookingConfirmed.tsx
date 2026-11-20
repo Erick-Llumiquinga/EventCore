@@ -7,6 +7,7 @@ import {
   MapPin,
   Armchair,
   Download,
+  Ticket,
 } from "lucide-react";
 import { useBooking } from "../context/BookingContext";
 
@@ -14,12 +15,15 @@ export const BookingConfirmed: React.FC = () => {
   const navigate = useNavigate();
   const {
     selectedMovie,
+    selectedCinema,
     selectedDate,
     selectedTime,
+    selectedShowtime,
     selectedSeats,
     totalTickets,
     resetBooking,
     bookingCode,
+    currentReservation,
   } = useBooking();
 
   const [copied, setCopied] = useState(false);
@@ -28,8 +32,10 @@ export const BookingConfirmed: React.FC = () => {
     return <Navigate to="/peliculas" replace />;
   }
 
+  const effectiveBookingCode = currentReservation?.booking_code || bookingCode;
+
   const handleCopyCode = () => {
-    navigator.clipboard?.writeText(bookingCode);
+    navigator.clipboard?.writeText(effectiveBookingCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -65,10 +71,10 @@ export const BookingConfirmed: React.FC = () => {
 
         {/* Heading */}
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          ¡Tus entradas están listas!
+          ¡Tus entradas están confirmadas!
         </h1>
         <p className="text-sm text-[#F2F0EB]/65 mt-1.5">
-          Gracias por reservar con EventCore
+          Tu pago ha sido procesado exitosamente por EventCore Booking Service.
         </p>
 
         {/* Booking Code Box */}
@@ -77,7 +83,7 @@ export const BookingConfirmed: React.FC = () => {
             Código de reserva:
           </span>
           <span className="text-lg sm:text-xl font-extrabold text-[#C7AA78] tracking-wider">
-            {bookingCode}
+            {effectiveBookingCode}
           </span>
           <button
             type="button"
@@ -95,72 +101,54 @@ export const BookingConfirmed: React.FC = () => {
 
         {/* QR Code & Movie Ticket Info */}
         <div className="mt-7 w-full max-w-md flex flex-col sm:flex-row items-center justify-center gap-6 sm:divide-x sm:divide-white/15">
-          {/* Crisp SVG QR Code */}
-          <div className="w-28 h-28 p-2 bg-white rounded-xl shadow-md shrink-0 flex items-center justify-center">
-            <svg
-              viewBox="0 0 29 29"
-              className="w-full h-full text-[#18191c]"
-              fill="currentColor"
-              shapeRendering="crispEdges"
-            >
-              {/* Finder Pattern Top-Left */}
-              <path d="M0,0 h7 v7 h-7 z M1,1 v5 h5 v-5 z M2,2 h3 v3 h-3 z" />
-              {/* Finder Pattern Top-Right */}
-              <path d="M22,0 h7 v7 h-7 z M23,1 v5 h5 v-5 z M24,2 h3 v3 h-3 z" />
-              {/* Finder Pattern Bottom-Left */}
-              <path d="M0,22 h7 v7 h-7 z M1,23 v5 h5 v-5 z M2,24 h3 v3 h-3 z" />
-              {/* Alignment Pattern */}
-              <path d="M20,20 h5 v5 h-5 z M21,21 v3 h3 v-3 z M22,22 h1 v1 h-1 z" />
-              {/* Data Modules */}
-              <rect x="8" y="0" width="2" height="1" />
-              <rect x="11" y="0" width="1" height="2" />
-              <rect x="14" y="0" width="3" height="1" />
-              <rect x="18" y="1" width="2" height="2" />
-              <rect x="9" y="2" width="2" height="2" />
-              <rect x="13" y="2" width="2" height="1" />
-              <rect x="16" y="3" width="2" height="2" />
-              <rect x="8" y="5" width="3" height="1" />
-              <rect x="12" y="4" width="3" height="2" />
-              <rect x="19" y="5" width="2" height="1" />
-              <rect x="0" y="8" width="2" height="2" />
-              <rect x="3" y="9" width="3" height="1" />
-              <rect x="7" y="8" width="2" height="3" />
-              <rect x="11" y="7" width="2" height="2" />
-              <rect x="14" y="8" width="3" height="2" />
-              <rect x="18" y="7" width="3" height="2" />
-              <rect x="22" y="8" width="2" height="2" />
-              <rect x="25" y="9" width="3" height="2" />
-              <rect x="1" y="11" width="2" height="3" />
-              <rect x="4" y="12" width="2" height="2" />
-              <rect x="8" y="12" width="3" height="2" />
-              <rect x="12" y="11" width="2" height="3" />
-              <rect x="15" y="12" width="2" height="2" />
-              <rect x="19" y="11" width="2" height="3" />
-              <rect x="23" y="12" width="2" height="2" />
-              <rect x="27" y="12" width="2" height="3" />
-              <rect x="0" y="15" width="3" height="2" />
-              <rect x="5" y="15" width="2" height="3" />
-              <rect x="9" y="15" width="2" height="2" />
-              <rect x="13" y="15" width="3" height="2" />
-              <rect x="17" y="15" width="2" height="3" />
-              <rect x="21" y="15" width="3" height="2" />
-              <rect x="25" y="16" width="2" height="2" />
-              <rect x="2" y="18" width="2" height="2" />
-              <rect x="6" y="19" width="3" height="2" />
-              <rect x="10" y="18" width="3" height="2" />
-              <rect x="14" y="19" width="2" height="3" />
-              <rect x="18" y="19" width="1" height="2" />
-              <rect x="26" y="19" width="3" height="2" />
-              <rect x="8" y="22" width="2" height="3" />
-              <rect x="11" y="21" width="2" height="2" />
-              <rect x="12" y="24" width="3" height="2" />
-              <rect x="16" y="23" width="3" height="2" />
-              <rect x="8" y="26" width="3" height="2" />
-              <rect x="13" y="27" width="2" height="2" />
-              <rect x="17" y="26" width="2" height="3" />
-              <rect x="21" y="26" width="3" height="2" />
-              <rect x="26" y="24" width="3" height="3" />
-            </svg>
+          {/* Official Signed QR Code from booking-service or Crisp SVG QR fallback */}
+          <div className="w-32 h-32 p-2.5 bg-white rounded-2xl shadow-lg shrink-0 flex items-center justify-center overflow-hidden">
+            {currentReservation?.qr_svg_data_uri ? (
+              <img
+                src={currentReservation.qr_svg_data_uri}
+                alt={`QR ${effectiveBookingCode}`}
+                className="w-full h-full object-contain"
+              />
+            ) : currentReservation?.qr_svg ? (
+              <div
+                dangerouslySetInnerHTML={{ __html: currentReservation.qr_svg }}
+                className="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+              />
+            ) : (
+              <svg
+                viewBox="0 0 29 29"
+                className="w-full h-full text-[#18191c]"
+                fill="currentColor"
+                shapeRendering="crispEdges"
+              >
+                {/* Finder Pattern Top-Left */}
+                <path d="M0,0 h7 v7 h-7 z M1,1 v5 h5 v-5 z M2,2 h3 v3 h-3 z" />
+                {/* Finder Pattern Top-Right */}
+                <path d="M22,0 h7 v7 h-7 z M23,1 v5 h5 v-5 z M24,2 h3 v3 h-3 z" />
+                {/* Finder Pattern Bottom-Left */}
+                <path d="M0,22 h7 v7 h-7 z M1,23 v5 h5 v-5 z M2,24 h3 v3 h-3 z" />
+                {/* Alignment Pattern */}
+                <path d="M20,20 h5 v5 h-5 z M21,21 v3 h3 v-3 z M22,22 h1 v1 h-1 z" />
+                <rect x="8" y="0" width="2" height="1" />
+                <rect x="11" y="0" width="1" height="2" />
+                <rect x="14" y="0" width="3" height="1" />
+                <rect x="18" y="1" width="2" height="2" />
+                <rect x="9" y="2" width="2" height="2" />
+                <rect x="13" y="2" width="2" height="1" />
+                <rect x="16" y="3" width="2" height="2" />
+                <rect x="8" y="5" width="3" height="1" />
+                <rect x="12" y="4" width="3" height="2" />
+                <rect x="19" y="5" width="2" height="1" />
+                <rect x="0" y="8" width="2" height="2" />
+                <rect x="3" y="9" width="3" height="1" />
+                <rect x="7" y="8" width="2" height="3" />
+                <rect x="11" y="7" width="2" height="2" />
+                <rect x="14" y="8" width="3" height="2" />
+                <rect x="18" y="7" width="3" height="2" />
+                <rect x="22" y="8" width="2" height="2" />
+                <rect x="25" y="9" width="3" height="2" />
+              </svg>
+            )}
           </div>
 
           {/* Movie Info Summary */}
@@ -172,7 +160,7 @@ export const BookingConfirmed: React.FC = () => {
             />
             <div className="space-y-1.5">
               <h3 className="text-base font-extrabold text-white">
-                {selectedMovie.title}
+                {currentReservation?.movie_title || selectedMovie.title}
               </h3>
               <div className="flex items-center gap-2 text-xs text-[#F2F0EB]/75">
                 <Calendar className="w-3.5 h-3.5 text-[#C7AA78] shrink-0" />
@@ -182,11 +170,20 @@ export const BookingConfirmed: React.FC = () => {
               </div>
               <div className="flex items-center gap-2 text-xs text-[#F2F0EB]/75">
                 <MapPin className="w-3.5 h-3.5 text-[#C7AA78] shrink-0" />
-                <span>{selectedMovie.room || "Sala 1"}</span>
+                <span>
+                  {currentReservation?.cinema_name || selectedCinema} &bull;{" "}
+                  {currentReservation?.auditorium_name ||
+                    selectedShowtime?.auditorium?.name ||
+                    selectedMovie.room ||
+                    "Sala Principal"}
+                </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-[#F2F0EB]/75">
                 <Armchair className="w-3.5 h-3.5 text-[#C7AA78] shrink-0" />
                 <span>{selectedSeats.join(", ")}</span>
+              </div>
+              <div className="text-xs font-semibold text-[#C7AA78] pt-0.5">
+                Total pagado: ${Number(currentReservation?.total_amount || 0).toFixed(2)}
               </div>
             </div>
           </div>
@@ -207,15 +204,15 @@ export const BookingConfirmed: React.FC = () => {
             type="button"
             onClick={() => {
               resetBooking();
-              navigate("/");
+              navigate("/dashboard?tab=reservas");
             }}
-            className="py-3.5 px-5 rounded-xl bg-transparent hover:bg-white/5 border border-[#C7AA78]/45 text-white font-semibold text-xs sm:text-sm flex items-center justify-center transition-all cursor-pointer"
+            className="py-3.5 px-5 rounded-xl bg-transparent hover:bg-white/5 border border-[#C7AA78]/45 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
-            Volver al inicio
+            <Ticket className="w-4 h-4 text-[#C7AA78]" />
+            <span>Ver mis reservas</span>
           </button>
         </div>
       </div>
     </div>
   );
 };
-

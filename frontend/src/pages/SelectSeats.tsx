@@ -1,32 +1,127 @@
-import React from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { ArrowRight, ArrowLeft } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import {
-  DISCOUNT_TICKET_PRICE,
   OCCUPIED_SEATS,
   SEAT_ROWS,
   SEATS_PER_ROW,
-  TICKET_PRICE,
 } from "../data/mockCinema";
 import { useBooking } from "../context/BookingContext";
+import { bookingApi, type SeatAvailabilityDto } from "../api/booking";
 
 export const SelectSeats: React.FC = () => {
   const navigate = useNavigate();
   const {
     selectedMovie,
+    selectedCinema,
     selectedDate,
     selectedTime,
+    selectedShowtime,
     adultTickets,
     discountTickets,
     totalTickets,
     selectedSeats,
     toggleSeat,
     totalPrice,
+    ticketPrice,
+    discountTicketPrice,
+    setCurrentReservation,
   } = useBooking();
+
+  const [isLoadingSeats, setIsLoadingSeats] = useState<boolean>(false);
+  const [isLockingSeats, setIsLockingSeats] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [seatMap, setSeatMap] = useState<SeatAvailabilityDto[]>([]);
+
+  // Load real-time seat availability from booking-service if showtime is selected
+  const fetchSeatAvailability = async () => {
+    if (!selectedShowtime?.id) return;
+
+    setIsLoadingSeats(true);
+    setErrorMsg(null);
+    try {
+      const res = await bookingApi.getShowtimeSeats(selectedShowtime.id);
+      if (res && res.seat_map && res.seat_map.length > 0) {
+        setSeatMap(res.seat_map);
+      }
+    } catch (e) {
+      console.warn("No se pudo cargar la disponibilidad en tiempo real de booking-service:", e);
+      // Fallback gracefully
+    } finally {
+      setIsLoadingSeats(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSeatAvailability();
+  }, [selectedShowtime?.id]);
+
+  // Group real seats by row if available
+  const groupedRows = useMemo(() => {
+    if (seatMap.length === 0) return null;
+
+    const groups = new Map<string, SeatAvailabilityDto[]>();
+    seatMap.forEach((seat) => {
+      const row = seat.row_label.toUpperCase();
+      if (!groups.has(row)) {
+        groups.set(row, []);
+      }
+      groups.get(row)!.push(seat);
+    });
+
+    // Sort rows alphabetically and seats by seat_number
+    const sorted = Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
+    sorted.forEach(([, seats]) => {
+      seats.sort((a, b) => a.seat_number - b.seat_number);
+    });
+
+    return sorted;
+  }, [seatMap]);
 
   const remainingSeats = Math.max(0, totalTickets - selectedSeats.length);
   const canContinue =
     totalTickets > 0 && selectedSeats.length === totalTickets;
+
+  // Handle continuing to payment step by creating reservation / locking seats in Redis for 10 min
+  const handleProceedToPayment = async () => {
+    if (!canContinue || isLockingSeats) return;
+
+    if (!selectedShowtime?.id) {
+      // Mock flow fallback
+      navigate("/pago");
+      return;
+    }
+
+    setIsLockingSeats(true);
+    setErrorMsg(null);
+    try {
+      const reservation = await bookingApi.createReservation({
+        showtime_id: selectedShowtime.id,
+        seats: selectedSeats,
+        adult_tickets: adultTickets,
+        discount_tickets: discountTickets,
+        unit_price: ticketPrice,
+        movie_title: selectedMovie.title,
+        cinema_name: selectedCinema,
+        auditorium_name: selectedShowtime.auditorium?.name,
+        showtime_start: selectedShowtime.start_time,
+      });
+
+      // Save confirmed locked reservation
+      setCurrentReservation(reservation);
+      navigate("/pago");
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Error al bloquear los asientos seleccionados. Por favor, intenta de nuevo.";
+      setErrorMsg(msg);
+      // Refresh seat map to show newly locked seats
+      fetchSeatAvailability();
+    } finally {
+      setIsLockingSeats(false);
+    }
+  };
 
   // Enforce sequential flow: must choose at least 1 ticket in Step 2 first
   if (totalTickets === 0) {
@@ -56,6 +151,27 @@ export const SelectSeats: React.FC = () => {
         </button>
       </div>
 
+      {/* Conflict / Error Banner */}
+      {errorMsg && (
+        <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-3 text-red-300 text-sm">
+          <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-semibold">{errorMsg}</p>
+            <p className="text-xs text-red-300/80 mt-1">
+              Es posible que otro usuario haya seleccionado los mismos asientos al mismo tiempo. Por favor, elige otros asientos disponibles.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={fetchSeatAvailability}
+            className="p-1 rounded text-red-300 hover:text-white hover:bg-red-500/20"
+            title="Recargar disponibilidad"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Main Screen Card */}
       <div className="bg-[#1b1c20] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
@@ -63,12 +179,25 @@ export const SelectSeats: React.FC = () => {
           <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
             <div>
               <div className="flex items-center justify-between mb-5">
-                <h1 className="text-xl sm:text-2xl font-extrabold text-white">
-                  {selectedMovie.room || "Sala 1"}
-                </h1>
-                <span className="px-3 py-1 rounded-full bg-[#222429] border border-[#C7AA78]/40 text-xs font-bold text-[#C7AA78]">
-                  Elegidos: {selectedSeats.length} / {totalTickets}
-                </span>
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-extrabold text-white">
+                    {selectedShowtime?.auditorium?.name || selectedMovie.room || "Sala Principal"}
+                  </h1>
+                  {selectedShowtime && (
+                    <span className="text-xs text-[#F2F0EB]/60">
+                      Formato {selectedShowtime.format} &bull; Disponibilidad en tiempo real
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {isLoadingSeats && (
+                    <Loader2 className="w-4 h-4 text-[#C7AA78] animate-spin" />
+                  )}
+                  <span className="px-3 py-1 rounded-full bg-[#222429] border border-[#C7AA78]/40 text-xs font-bold text-[#C7AA78]">
+                    Elegidos: {selectedSeats.length} / {totalTickets}
+                  </span>
+                </div>
               </div>
 
               {/* Cinema Screen Indicator ("PANTALLA") */}
@@ -83,48 +212,99 @@ export const SelectSeats: React.FC = () => {
                 </div>
               </div>
 
-              {/* Seat Rows Matrix */}
-              <div className="space-y-3.5 max-w-md">
-                {SEAT_ROWS.map((row) => (
-                  <div key={row} className="flex items-center gap-4">
-                    <span className="w-5 text-sm font-bold text-[#F2F0EB]/80">
-                      {row}
-                    </span>
+              {/* Dynamic Seat Matrix from booking-service or Fallback */}
+              {groupedRows ? (
+                <div className="space-y-3.5 max-w-md">
+                  {groupedRows.map(([row, seats]) => (
+                    <div key={row} className="flex items-center gap-4">
+                      <span className="w-5 text-sm font-bold text-[#F2F0EB]/80 text-center">
+                        {row}
+                      </span>
 
-                    <div className="grid grid-cols-8 gap-2.5 flex-1">
-                      {Array.from({ length: SEATS_PER_ROW }, (_, idx) => {
-                        const seatNumber = idx + 1;
-                        const seatId = `${row}${seatNumber}`;
-                        const isOccupied = OCCUPIED_SEATS.has(seatId);
-                        const isSelected = selectedSeats.includes(seatId);
+                      <div className="flex items-center gap-2.5 flex-1 flex-wrap">
+                        {seats.map((seat) => {
+                          const seatId = seat.seat_code;
+                          const isOccupied =
+                            seat.booking_status === "confirmed" ||
+                            seat.booking_status === "maintenance";
+                          const isLocked = seat.booking_status === "locked";
+                          const isSelected = selectedSeats.includes(seatId);
 
-                        return (
-                          <button
-                            key={seatId}
-                            type="button"
-                            disabled={isOccupied}
-                            onClick={() => toggleSeat(seatId)}
-                            title={
-                              isOccupied
-                                ? `Asiento ${seatId} (Ocupado)`
-                                : `Asiento ${seatId}`
-                            }
-                            className={`h-8 sm:h-9 rounded-t-lg rounded-b-md transition-all flex items-center justify-center text-[11px] font-bold ${
-                              isOccupied
-                                ? "bg-[#6e7076] text-transparent cursor-not-allowed opacity-85"
-                                : isSelected
-                                  ? "bg-[#C7AA78] text-[#1c1d21] shadow-md shadow-[#C7AA78]/30 scale-105 cursor-pointer"
-                                  : "bg-[#32343a] border border-white/5 text-transparent hover:border-[#C7AA78]/60 hover:bg-[#3c3f46] cursor-pointer"
-                            }`}
-                          >
-                            {seatId}
-                          </button>
-                        );
-                      })}
+                          return (
+                            <button
+                              key={seatId}
+                              type="button"
+                              disabled={!seat.is_available}
+                              onClick={() => toggleSeat(seatId)}
+                              title={
+                                isOccupied
+                                  ? `Asiento ${seatId} (Vendido)`
+                                  : isLocked
+                                    ? `Asiento ${seatId} (Bloqueado temporalmente por otro usuario)`
+                                    : `Asiento ${seatId} (Disponible)`
+                              }
+                              className={`h-8 sm:h-9 min-w-[32px] px-2 rounded-t-lg rounded-b-md transition-all flex items-center justify-center text-[11px] font-bold ${
+                                isOccupied
+                                  ? "bg-[#6e7076] text-transparent cursor-not-allowed opacity-85"
+                                  : isLocked
+                                    ? "bg-amber-600/70 text-transparent cursor-not-allowed border border-amber-500/50"
+                                    : isSelected
+                                      ? "bg-[#C7AA78] text-[#1c1d21] shadow-md shadow-[#C7AA78]/30 scale-105 cursor-pointer"
+                                      : "bg-[#32343a] border border-white/5 text-transparent hover:border-[#C7AA78]/60 hover:bg-[#3c3f46] cursor-pointer"
+                              }`}
+                            >
+                              {seat.seat_number}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                /* Static Grid Fallback */
+                <div className="space-y-3.5 max-w-md">
+                  {SEAT_ROWS.map((row) => (
+                    <div key={row} className="flex items-center gap-4">
+                      <span className="w-5 text-sm font-bold text-[#F2F0EB]/80">
+                        {row}
+                      </span>
+
+                      <div className="grid grid-cols-8 gap-2.5 flex-1">
+                        {Array.from({ length: SEATS_PER_ROW }, (_, idx) => {
+                          const seatNumber = idx + 1;
+                          const seatId = `${row}${seatNumber}`;
+                          const isOccupied = OCCUPIED_SEATS.has(seatId);
+                          const isSelected = selectedSeats.includes(seatId);
+
+                          return (
+                            <button
+                              key={seatId}
+                              type="button"
+                              disabled={isOccupied}
+                              onClick={() => toggleSeat(seatId)}
+                              title={
+                                isOccupied
+                                  ? `Asiento ${seatId} (Ocupado)`
+                                  : `Asiento ${seatId}`
+                              }
+                              className={`h-8 sm:h-9 rounded-t-lg rounded-b-md transition-all flex items-center justify-center text-[11px] font-bold ${
+                                isOccupied
+                                  ? "bg-[#6e7076] text-transparent cursor-not-allowed opacity-85"
+                                  : isSelected
+                                    ? "bg-[#C7AA78] text-[#1c1d21] shadow-md shadow-[#C7AA78]/30 scale-105 cursor-pointer"
+                                    : "bg-[#32343a] border border-white/5 text-transparent hover:border-[#C7AA78]/60 hover:bg-[#3c3f46] cursor-pointer"
+                              }`}
+                            >
+                              {seatId}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Seat Legend */}
@@ -136,6 +316,10 @@ export const SelectSeats: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="w-4 h-4 rounded bg-[#C7AA78] inline-block" />
                 <span>Seleccionado</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 rounded bg-amber-600/70 border border-amber-500/50 inline-block" />
+                <span>En reserva (10m)</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-4 h-4 rounded bg-[#6e7076] inline-block" />
@@ -160,10 +344,10 @@ export const SelectSeats: React.FC = () => {
                       {selectedMovie.title}
                     </h3>
                     <p className="text-xs text-[#F2F0EB]/65">
-                      {selectedDate.formatted} &bull; {selectedTime}
+                      {selectedCinema} &bull; {selectedDate.formatted} &bull; {selectedTime}
                     </p>
-                    <p className="text-xs text-[#F2F0EB]/65">
-                      {selectedMovie.room || "Sala 1"}
+                    <p className="text-xs text-[#C7AA78]">
+                      {selectedShowtime?.auditorium?.name || selectedMovie.room || "Sala Principal"}
                     </p>
                   </div>
                 </div>
@@ -194,19 +378,19 @@ export const SelectSeats: React.FC = () => {
                 <div className="pb-4 border-b border-white/10 space-y-2 text-xs text-[#F2F0EB]/75">
                   {adultTickets > 0 && (
                     <div className="flex items-center justify-between">
-                      <span>Adulto x{adultTickets}</span>
+                      <span>Tarifa General x{adultTickets}</span>
                       <span className="font-semibold text-white">
-                        ${(adultTickets * TICKET_PRICE).toFixed(2)}
+                        ${(adultTickets * ticketPrice).toFixed(2)}
                       </span>
                     </div>
                   )}
                   {discountTickets > 0 && (
                     <div className="flex items-center justify-between">
                       <span>
-                        Niño / 3ra Edad / Discap. (50%) x{discountTickets}
+                        Niño / 3ra Edad (50%) x{discountTickets}
                       </span>
                       <span className="font-semibold text-white">
-                        ${(discountTickets * DISCOUNT_TICKET_PRICE).toFixed(2)}
+                        ${(discountTickets * discountTicketPrice).toFixed(2)}
                       </span>
                     </div>
                   )}
@@ -215,7 +399,7 @@ export const SelectSeats: React.FC = () => {
                 {/* Subtotal */}
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-sm font-medium text-[#F2F0EB]/80">
-                    Subtotal
+                    Total a pagar
                   </span>
                   <span className="text-2xl font-extrabold text-[#C7AA78]">
                     ${totalPrice.toFixed(2)}
@@ -223,19 +407,28 @@ export const SelectSeats: React.FC = () => {
                 </div>
               </div>
 
-              {/* Continue CTA */}
+              {/* Continue CTA (Locks seats in Redis for 10 min) */}
               <button
                 type="button"
-                disabled={!canContinue}
-                onClick={() => navigate("/pago")}
+                disabled={!canContinue || isLockingSeats}
+                onClick={handleProceedToPayment}
                 className="w-full py-3.5 px-5 rounded-xl bg-[#C7AA78] hover:bg-[#d5bd92] disabled:opacity-40 disabled:cursor-not-allowed text-[#1c1d21] font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#C7AA78]/20 transition-all cursor-pointer"
               >
-                <span>
-                  {canContinue
-                    ? "Continuar"
-                    : `Elige ${remainingSeats} ${remainingSeats === 1 ? "asiento más" : "asientos más"}`}
-                </span>
-                <ArrowRight className="w-4 h-4" />
+                {isLockingSeats ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Bloqueando asientos en Redis...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      {canContinue
+                        ? "Bloquear asientos y continuar"
+                        : `Elige ${remainingSeats} ${remainingSeats === 1 ? "asiento más" : "asientos más"}`}
+                    </span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </div>
           </div>

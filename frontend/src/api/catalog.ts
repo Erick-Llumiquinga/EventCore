@@ -70,6 +70,19 @@ export interface CinemasListPayload {
   pagination: CatalogPagination;
 }
 
+export interface ShowtimesListPayload {
+  showtimes: CatalogShowtimeDto[];
+  pagination: CatalogPagination;
+}
+
+export interface CatalogSeatDto {
+  id: number;
+  auditorium_id: number;
+  row_label: string;
+  seat_number: number;
+  status: "active" | "inactive" | "maintenance" | string;
+}
+
 export interface CreateAuditoriumPayload {
   cinema_id: number;
   name: string;
@@ -79,6 +92,30 @@ export interface CreateAuditoriumPayload {
 export interface UpdateAuditoriumPayload {
   name?: string;
   capacity?: number;
+}
+
+export interface CreateShowtimePayload {
+  movie_id: string;
+  auditorium_id: number;
+  start_time: string;
+  format: string;
+}
+
+export interface UpdateShowtimePayload {
+  movie_id?: string;
+  auditorium_id?: number;
+  start_time?: string;
+  format?: string;
+}
+
+export interface CreateTicketTypePayload {
+  showtime_id: number;
+  name: string;
+  price: number;
+}
+
+export interface SyncCinemaMoviesPayload {
+  movie_ids: string[];
 }
 
 export interface CachedMoviesResult {
@@ -315,6 +352,79 @@ export const catalogApi = {
     };
   },
 
+  getShowtimes: async (params?: {
+    movie_id?: string;
+    cinema_id?: number | string;
+    date?: string;
+    page?: number;
+    per_page?: number;
+  }): Promise<{
+    showtimes: CatalogShowtimeDto[];
+    pagination: CatalogPagination;
+  }> => {
+    const response = await apiClient.get<ApiResponse<ShowtimesListPayload>>(
+      "/catalog/showtimes",
+      { params: params || { per_page: 50 } },
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(
+        response.data.message || "No se pudieron obtener las funciones",
+      );
+    }
+
+    return {
+      showtimes: response.data.data.showtimes || [],
+      pagination: response.data.data.pagination,
+    };
+  },
+
+  getShowtimeById: async (id: number | string): Promise<CatalogShowtimeDto> => {
+    const response = await apiClient.get<ApiResponse<CatalogShowtimeDto>>(
+      `/catalog/showtimes/${id}`,
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(
+        response.data.message || "No se pudo obtener la información de la función",
+      );
+    }
+
+    return response.data.data;
+  },
+
+  getShowtimeTicketTypes: async (
+    showtimeId: number | string,
+  ): Promise<CatalogTicketTypeDto[]> => {
+    const response = await apiClient.get<ApiResponse<CatalogTicketTypeDto[]>>(
+      `/catalog/showtimes/${showtimeId}/ticket-types`,
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(
+        response.data.message || "No se pudieron obtener los tipos de boleto",
+      );
+    }
+
+    return response.data.data || [];
+  },
+
+  getShowtimeSeats: async (
+    showtimeId: number | string,
+  ): Promise<CatalogSeatDto[]> => {
+    const response = await apiClient.get<ApiResponse<CatalogSeatDto[]>>(
+      `/catalog/showtimes/${showtimeId}/seats`,
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(
+        response.data.message || "No se pudo obtener el mapa de asientos del auditorio",
+      );
+    }
+
+    return response.data.data || [];
+  },
+
   createAuditorium: async (
     payload: CreateAuditoriumPayload,
   ): Promise<CatalogAuditoriumDto> => {
@@ -355,6 +465,134 @@ export const catalogApi = {
 
     if (response.data.code !== 200) {
       throw new Error(response.data.message || "Error al eliminar la sala");
+    }
+
+    catalogApi.clearCache();
+  },
+
+  getCinemaDetail: async (
+    cinemaId: number | string,
+  ): Promise<
+    CatalogCinemaDto & {
+      movies?: (CatalogMovieDto & { showtimes?: CatalogShowtimeDto[] })[];
+    }
+  > => {
+    const response = await apiClient.get<
+      ApiResponse<
+        CatalogCinemaDto & {
+          movies?: (CatalogMovieDto & { showtimes?: CatalogShowtimeDto[] })[];
+        }
+      >
+    >(`/catalog/cinemas/${cinemaId}`);
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(
+        response.data.message || "No se pudo obtener el detalle del cine",
+      );
+    }
+
+    return response.data.data;
+  },
+
+  createShowtime: async (
+    payload: CreateShowtimePayload,
+  ): Promise<CatalogShowtimeDto> => {
+    const response = await apiClient.post<ApiResponse<CatalogShowtimeDto>>(
+      "/catalog/showtimes",
+      payload,
+    );
+
+    if (
+      (response.data.code !== 200 && response.data.code !== 201) ||
+      !response.data.data
+    ) {
+      throw new Error(response.data.message || "Error al programar la función");
+    }
+
+    catalogApi.clearCache();
+    return response.data.data;
+  },
+
+  updateShowtime: async (
+    id: number,
+    payload: UpdateShowtimePayload,
+  ): Promise<CatalogShowtimeDto> => {
+    const response = await apiClient.put<ApiResponse<CatalogShowtimeDto>>(
+      `/catalog/showtimes/${id}`,
+      payload,
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(response.data.message || "Error al actualizar la función");
+    }
+
+    catalogApi.clearCache();
+    return response.data.data;
+  },
+
+  deleteShowtime: async (id: number): Promise<void> => {
+    const response = await apiClient.delete<ApiResponse<{ id: number }>>(
+      `/catalog/showtimes/${id}`,
+    );
+
+    if (response.data.code !== 200) {
+      throw new Error(response.data.message || "Error al eliminar la función");
+    }
+
+    catalogApi.clearCache();
+  },
+
+  createTicketType: async (
+    payload: CreateTicketTypePayload,
+  ): Promise<CatalogTicketTypeDto> => {
+    const response = await apiClient.post<ApiResponse<CatalogTicketTypeDto>>(
+      "/catalog/ticket-types",
+      payload,
+    );
+
+    if (
+      (response.data.code !== 200 && response.data.code !== 201) ||
+      !response.data.data
+    ) {
+      throw new Error(
+        response.data.message || "Error al registrar la tarifa de boleto",
+      );
+    }
+
+    return response.data.data;
+  },
+
+  syncCinemaMovies: async (
+    cinemaId: number | string,
+    movieIds: string[],
+  ): Promise<CatalogMovieDto[]> => {
+    const response = await apiClient.post<ApiResponse<CatalogMovieDto[]>>(
+      `/catalog/cinemas/${cinemaId}/movies`,
+      { movie_ids: movieIds },
+    );
+
+    if (response.data.code !== 200 || !response.data.data) {
+      throw new Error(
+        response.data.message || "Error al actualizar la cartelera del cine",
+      );
+    }
+
+    catalogApi.clearCache();
+    return response.data.data;
+  },
+
+  detachCinemaMovie: async (
+    cinemaId: number | string,
+    movieId: string,
+  ): Promise<void> => {
+    const response = await apiClient.delete<ApiResponse<{ movie_id: string }>>(
+      `/catalog/cinemas/${cinemaId}/movies/${movieId}`,
+    );
+
+    if (response.data.code !== 200) {
+      throw new Error(
+        response.data.message || "Error al retirar película de la cartelera",
+      );
     }
 
     catalogApi.clearCache();

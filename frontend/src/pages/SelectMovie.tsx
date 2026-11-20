@@ -2,16 +2,47 @@ import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MapPin, ChevronDown, Clock, Loader2, AlertCircle } from "lucide-react";
 import { CINEMAS, type Movie } from "../data/mockCinema";
-import { catalogApi } from "../api/catalog";
+import { catalogApi, type CatalogCinemaDto } from "../api/catalog";
 import { useBooking } from "../context/BookingContext";
 
 export const SelectMovie: React.FC = () => {
   const navigate = useNavigate();
-  const { selectedCinema, setSelectedCinema, setSelectedMovie } = useBooking();
+  const {
+    selectedCinema,
+    setSelectedCinema,
+    selectedCinemaId,
+    setSelectedCinemaId,
+    setSelectedMovie,
+  } = useBooking();
 
+  const [cinemas, setCinemas] = useState<CatalogCinemaDto[]>([]);
   const [movies, setMovies] = useState<Movie[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Load cinemas from catalog-service
+  useEffect(() => {
+    let isMounted = true;
+    const loadCinemas = async () => {
+      try {
+        const result = await catalogApi.getCinemas();
+        if (isMounted && result.cinemas.length > 0) {
+          setCinemas(result.cinemas);
+          // If no cinema is selected yet or not matching, default to first from API
+          if (!selectedCinemaId) {
+            setSelectedCinemaId(result.cinemas[0].id);
+            setSelectedCinema(result.cinemas[0].name);
+          }
+        }
+      } catch (e) {
+        console.warn("No se pudieron cargar cines desde la API, usando locales:", e);
+      }
+    };
+    loadCinemas();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedCinemaId, setSelectedCinema, setSelectedCinemaId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -20,7 +51,10 @@ export const SelectMovie: React.FC = () => {
       setIsLoading(true);
       setErrorMsg(null);
       try {
-        const result = await catalogApi.getMovies({ per_page: 15 });
+        const result = await catalogApi.getMovies({
+          per_page: 15,
+          cinema_id: selectedCinemaId,
+        });
         if (isMounted) {
           setMovies(result.movies);
         }
@@ -44,7 +78,7 @@ export const SelectMovie: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [selectedCinemaId]);
 
   const handleSelectMovie = (movie: Movie) => {
     setSelectedMovie(movie);
@@ -94,19 +128,39 @@ export const SelectMovie: React.FC = () => {
               <div className="relative inline-block w-full sm:w-72">
                 <MapPin className="w-4 h-4 text-[#C7AA78] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <select
-                  value={selectedCinema}
-                  onChange={(e) => setSelectedCinema(e.target.value)}
+                  value={selectedCinemaId ? String(selectedCinemaId) : selectedCinema}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const found = cinemas.find((c) => String(c.id) === val);
+                    if (found) {
+                      setSelectedCinemaId(found.id);
+                      setSelectedCinema(found.name);
+                    } else {
+                      setSelectedCinema(val);
+                      setSelectedCinemaId(undefined);
+                    }
+                  }}
                   className="w-full appearance-none pl-10 pr-10 py-2.5 rounded-xl bg-[#18191c]/90 backdrop-blur-md border border-white/15 text-sm text-[#F2F0EB] font-medium focus:outline-none focus:border-[#C7AA78] transition-colors cursor-pointer"
                 >
-                  {CINEMAS.map((cinema) => (
-                    <option
-                      key={cinema}
-                      value={cinema}
-                      className="bg-[#202124] text-[#F2F0EB]"
-                    >
-                      {cinema}
-                    </option>
-                  ))}
+                  {cinemas.length > 0
+                    ? cinemas.map((cinema) => (
+                        <option
+                          key={cinema.id}
+                          value={cinema.id}
+                          className="bg-[#202124] text-[#F2F0EB]"
+                        >
+                          {cinema.name} ({cinema.city})
+                        </option>
+                      ))
+                    : CINEMAS.map((cinema) => (
+                        <option
+                          key={cinema}
+                          value={cinema}
+                          className="bg-[#202124] text-[#F2F0EB]"
+                        >
+                          {cinema}
+                        </option>
+                      ))}
                 </select>
                 <ChevronDown className="w-4 h-4 text-[#F2F0EB]/60 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               </div>
