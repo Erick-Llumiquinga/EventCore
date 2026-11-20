@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import {
   ClipboardList,
@@ -8,27 +8,65 @@ import {
   Lock,
   User,
   ArrowLeft,
+  Clock,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
-import { DISCOUNT_TICKET_PRICE, TICKET_PRICE } from "../data/mockCinema";
 import { useBooking } from "../context/BookingContext";
+import { bookingApi } from "../api/booking";
 
 export const CheckoutPayment: React.FC = () => {
   const navigate = useNavigate();
   const {
     selectedMovie,
+    selectedCinema,
     selectedDate,
     selectedTime,
+    selectedShowtime,
     selectedSeats,
     adultTickets,
     discountTickets,
     totalTickets,
     totalPrice,
+    ticketPrice,
+    discountTicketPrice,
+    currentReservation,
+    setCurrentReservation,
   } = useBooking();
 
   const [cardNumber, setCardNumber] = useState("1234 5678 9012 3456");
   const [expiry, setExpiry] = useState("10 / 28");
   const [cvv, setCvv] = useState("123");
   const [fullName, setFullName] = useState("Juan Pérez");
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // 10-minute Redis lock countdown timer
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(() => {
+    if (currentReservation?.expires_at) {
+      const diff = Math.floor(
+        (new Date(currentReservation.expires_at).getTime() - Date.now()) / 1000,
+      );
+      return Math.max(0, diff);
+    }
+    return currentReservation?.remaining_lock_seconds || 600;
+  });
+
+  useEffect(() => {
+    if (secondsRemaining <= 0) return;
+    const interval = setInterval(() => {
+      setSecondsRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [secondsRemaining]);
 
   if (totalTickets === 0) {
     return <Navigate to="/funcion" replace />;
@@ -37,9 +75,52 @@ export const CheckoutPayment: React.FC = () => {
     return <Navigate to="/asientos" replace />;
   }
 
-  const handlePay = (e: React.FormEvent) => {
+  const formatCountdown = (secs: number) => {
+    const mins = Math.floor(secs / 60);
+    const rem = secs % 60;
+    return `${mins.toString().padStart(2, "0")}:${rem.toString().padStart(2, "0")}`;
+  };
+
+  const handlePay = async (e: React.FormEvent) => {
     e.preventDefault();
-    navigate("/confirmacion");
+    if (isProcessing) return;
+
+    if (secondsRemaining <= 0) {
+      setErrorMsg("El tiempo de bloqueo de 10 minutos para estos asientos ha expirado. Por favor, vuelve a seleccionarlos.");
+      return;
+    }
+
+    // If reservation exists in booking-service, confirm payment
+    if (currentReservation?.booking_code) {
+      setIsProcessing(true);
+      setErrorMsg(null);
+      try {
+        const cleanCard = cardNumber.replace(/\s+/g, "");
+        const confirmed = await bookingApi.confirmReservation(
+          currentReservation.booking_code,
+          {
+            payment_method: "card",
+            card_holder: fullName,
+            card_last_four: cleanCard.slice(-4),
+            payment_reference: `PAY-${Date.now().toString(36).toUpperCase()}`,
+          },
+        );
+
+        setCurrentReservation(confirmed);
+        navigate("/confirmacion");
+      } catch (err: unknown) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "No se pudo procesar el pago. Por favor, verifica los datos e intenta nuevamente.";
+        setErrorMsg(msg);
+      } finally {
+        setIsProcessing(false);
+      }
+    } else {
+      // Mock flow fallback
+      navigate("/confirmacion");
+    }
   };
 
   return (
@@ -65,6 +146,50 @@ export const CheckoutPayment: React.FC = () => {
         </button>
       </div>
 
+      {/* Redis Lock Timer Banner */}
+      <div className="mb-6 p-4 rounded-2xl bg-[#222429] border border-[#C7AA78]/35 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-[#C7AA78]/15 border border-[#C7AA78]/30 flex items-center justify-center text-[#C7AA78]">
+            <Clock className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-white">
+              Tus asientos están bloqueados temporalmente en Redis
+            </h4>
+            <p className="text-xs text-[#F2F0EB]/65">
+              Completa tu compra antes de que expire el tiempo para garantizar tu lugar.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#1b1c20] border border-white/10">
+          <span className="text-xs text-[#F2F0EB]/70 font-medium">Tiempo restante:</span>
+          <span
+            className={`font-mono text-base font-extrabold ${
+              secondsRemaining < 120 ? "text-red-400 animate-pulse" : "text-[#C7AA78]"
+            }`}
+          >
+            {formatCountdown(secondsRemaining)}
+          </span>
+        </div>
+      </div>
+
+      {errorMsg && (
+        <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center gap-3 text-red-300 text-sm">
+          <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+          <span className="flex-1">{errorMsg}</span>
+          {secondsRemaining <= 0 && (
+            <button
+              type="button"
+              onClick={() => navigate("/asientos")}
+              className="px-3 py-1 rounded-lg bg-red-500/20 text-white text-xs font-bold hover:bg-red-500/30"
+            >
+              Volver a asientos
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Main Container */}
       <div className="bg-[#1b1c20] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -88,11 +213,16 @@ export const CheckoutPayment: React.FC = () => {
                     {selectedMovie.title}
                   </h3>
                   <p className="text-xs text-[#F2F0EB]/65">
-                    {selectedDate.formatted} &bull; {selectedTime}
+                    {selectedCinema} &bull; {selectedDate.formatted} &bull; {selectedTime}
                   </p>
-                  <p className="text-xs text-[#F2F0EB]/65">
-                    {selectedMovie.room || "Sala 1"}
+                  <p className="text-xs text-[#C7AA78]">
+                    {selectedShowtime?.auditorium?.name || selectedMovie.room || "Sala Principal"}
                   </p>
+                  {currentReservation?.booking_code && (
+                    <p className="text-[11px] font-mono text-[#F2F0EB]/50 pt-0.5">
+                      Reserva: {currentReservation.booking_code}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -113,7 +243,7 @@ export const CheckoutPayment: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5 text-[#F2F0EB]/75">
                       <Ticket className="w-4 h-4 text-[#C7AA78]" />
-                      <span>Entradas (Adulto)</span>
+                      <span>Entradas (Tarifa General)</span>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -121,7 +251,7 @@ export const CheckoutPayment: React.FC = () => {
                         x{adultTickets}
                       </span>
                       <span className="font-bold text-white">
-                        ${(adultTickets * TICKET_PRICE).toFixed(2)}
+                        ${(adultTickets * ticketPrice).toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -131,7 +261,7 @@ export const CheckoutPayment: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5 text-[#F2F0EB]/75">
                       <Ticket className="w-4 h-4 text-[#C7AA78]" />
-                      <span>Niño / 3ra Edad / Discap. (50%)</span>
+                      <span>Niño / 3ra Edad (50%)</span>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -139,7 +269,7 @@ export const CheckoutPayment: React.FC = () => {
                         x{discountTickets}
                       </span>
                       <span className="font-bold text-white">
-                        ${(discountTickets * DISCOUNT_TICKET_PRICE).toFixed(2)}
+                        ${(discountTickets * discountTicketPrice).toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -266,10 +396,20 @@ export const CheckoutPayment: React.FC = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full mt-2 py-3.5 px-6 rounded-xl bg-[#C7AA78] hover:bg-[#d5bd92] text-[#1c1d21] font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#C7AA78]/20 transition-all cursor-pointer"
+                disabled={isProcessing || secondsRemaining <= 0}
+                className="w-full mt-2 py-3.5 px-6 rounded-xl bg-[#C7AA78] hover:bg-[#d5bd92] disabled:opacity-40 disabled:cursor-not-allowed text-[#1c1d21] font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#C7AA78]/20 transition-all cursor-pointer"
               >
-                <Lock className="w-4 h-4" />
-                <span>Pagar y reservar</span>
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Confirmando pago y generando QR...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>Pagar y confirmar reserva</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
