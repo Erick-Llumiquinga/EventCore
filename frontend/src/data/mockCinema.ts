@@ -3,10 +3,12 @@ export interface Movie {
   title: string;
   genre: string;
   duration: string;
+  duration_minutes?: number;
   ageRating: string;
   rating: number;
   synopsis: string;
   poster: string;
+  status?: string;
   room: string;
 }
 

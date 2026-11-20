@@ -16,20 +16,21 @@ use Illuminate\Support\Facades\Route;
 // Public liveness probe (Docker/monitoring cannot send tokens).
 Route::get('/health', [CatalogController::class, 'health']);
 
+// Read: cinemas, movies and showtimes.
+Route::get('/cinemas', [CinemaController::class, 'index']);
+Route::get('/cinemas/{cinema}', [CinemaController::class, 'show']);
+
+Route::get('/movies', [MovieController::class, 'index']);
+Route::get('/movies/{movie}', [MovieController::class, 'show']);
+
+Route::get('/showtimes', [ShowtimeController::class, 'index']);
+Route::get('/showtimes/{showtime}', [ShowtimeController::class, 'show']);
+Route::get('/showtimes/{showtime}/ticket-types', [ShowtimeController::class, 'ticketTypes']);
+Route::get('/showtimes/{showtime}/seats', [ShowtimeController::class, 'seats']);
+
 // Flat catalog URLs with query-parameter filters.
 // Every endpoint requires a Bearer token issued by auth-service.
 Route::middleware('jwt.verify')->group(function () {
-    // Read: cinemas, movies and showtimes.
-    Route::get('/cinemas', [CinemaController::class, 'index']);
-    Route::get('/cinemas/{cinema}', [CinemaController::class, 'show']);
-
-    Route::get('/movies', [MovieController::class, 'index']);
-    Route::get('/movies/{movie}', [MovieController::class, 'show']);
-
-    Route::get('/showtimes', [ShowtimeController::class, 'index']);
-    Route::get('/showtimes/{showtime}', [ShowtimeController::class, 'show']);
-    Route::get('/showtimes/{showtime}/ticket-types', [ShowtimeController::class, 'ticketTypes']);
-    Route::get('/showtimes/{showtime}/seats', [ShowtimeController::class, 'seats']);
 
     // Administration: token + role=admin claim.
     Route::middleware('role:admin')->group(function () {

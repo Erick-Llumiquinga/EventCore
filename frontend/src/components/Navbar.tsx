@@ -1,11 +1,16 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { Ticket, LogOut, CircleUserRound } from "lucide-react";
+import { Ticket, LogOut, CircleUserRound, Building2, Clapperboard } from "lucide-react";
 
 export const Navbar: React.FC = () => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, role, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const roleSlug = (role?.slug || user?.role || "").toLowerCase();
+  const isSuperAdmin =
+    isAuthenticated && (roleSlug === "admin" || roleSlug === "super_admin");
 
   const handleLogout = async () => {
     await logout();
@@ -25,10 +30,51 @@ export const Navbar: React.FC = () => {
           </span>
         </Link>
 
-        {/* Right: User Account */}
+        {/* Right: Admin Links & User Account */}
         <div className="flex items-center gap-3 shrink-0">
+          {/* Option strictly visible only for Super Admin */}
+          {isSuperAdmin && (
+            <div className="flex items-center gap-1.5">
+              <Link
+                to="/admin/funciones"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                  location.pathname.startsWith("/admin/funciones") || location.pathname.startsWith("/admin/cartelera")
+                    ? "bg-[#C7AA78] text-[#1c1d21] border-[#C7AA78] shadow-md shadow-[#C7AA78]/20"
+                    : "bg-[#222429] text-[#C7AA78] border-[#C7AA78]/40 hover:bg-[#C7AA78]/15"
+                }`}
+              >
+                <Clapperboard className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Cartelera y Funciones</span>
+                <span className="md:hidden">Funciones</span>
+              </Link>
+              <Link
+                to="/admin/salas"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                  location.pathname === "/admin/salas"
+                    ? "bg-[#C7AA78] text-[#1c1d21] border-[#C7AA78] shadow-md shadow-[#C7AA78]/20"
+                    : "bg-[#222429] text-[#C7AA78] border-[#C7AA78]/40 hover:bg-[#C7AA78]/15"
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">Administrar Salas</span>
+                <span className="md:hidden">Salas</span>
+              </Link>
+            </div>
+          )}
+
           {isAuthenticated && user ? (
             <div className="flex items-center gap-2.5">
+              <Link
+                to="/dashboard?tab=reservas"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all ${
+                  location.pathname === "/dashboard" && location.search.includes("tab=reservas")
+                    ? "bg-[#C7AA78] text-[#1c1d21] border-[#C7AA78]"
+                    : "bg-[#222429] text-[#F2F0EB]/90 border-white/10 hover:border-[#C7AA78]/50 hover:text-[#C7AA78]"
+                }`}
+              >
+                <Ticket className="w-3.5 h-3.5 text-[#C7AA78]" />
+                <span className="hidden sm:inline">Mis Reservas</span>
+              </Link>
               <Link
                 to="/dashboard"
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#222429] border border-white/10 hover:border-[#C7AA78]/50 transition-colors"

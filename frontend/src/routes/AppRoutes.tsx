@@ -6,10 +6,13 @@ import { Login } from "../pages/Login";
 import { Register } from "../pages/Register";
 import { Dashboard } from "../pages/Dashboard";
 import { SelectMovie } from "../pages/SelectMovie";
+import { MovieDetail } from "../pages/MovieDetail";
 import { SelectShowtime } from "../pages/SelectShowtime";
 import { SelectSeats } from "../pages/SelectSeats";
 import { CheckoutPayment } from "../pages/CheckoutPayment";
 import { BookingConfirmed } from "../pages/BookingConfirmed";
+import { AdminAuditoriums } from "../pages/AdminAuditoriums";
+import { AdminShowtimes } from "../pages/AdminShowtimes";
 import { ProtectedRoute } from "../components/ProtectedRoute";
 import { AssistantChat } from "../components/AssistantChat";
 
@@ -19,8 +22,9 @@ export const AppRoutes: React.FC = () => {
       <Navbar />
       <main className="flex-1">
         <Routes>
-          {/* Main Landing with Full-Width Carousel */}
+          {/* Main Landing with Full-Width Carousel & Public Movie Detail */}
           <Route path="/" element={<Home />} />
+          <Route path="/peliculas/:id" element={<MovieDetail />} />
 
           {/* 5 Individual Cinema Booking Screens (Protected) */}
           <Route
@@ -74,6 +78,30 @@ export const AppRoutes: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/salas"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "super_admin"]}>
+                <AdminAuditoriums />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/funciones"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "super_admin"]}>
+                <AdminShowtimes />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/cartelera"
+            element={
+              <ProtectedRoute allowedRoles={["admin", "super_admin"]}>
+                <AdminShowtimes />
               </ProtectedRoute>
             }
           />
